@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.sermon-work/
+*.aiff
+*.aif
+*.wav
+*.mp3
+!test/fixtures/**/*.aiff
+!test/fixtures/**/*.wav
+!test/fixtures/**/*.mp3
+.DS_Store
