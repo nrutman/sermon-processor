@@ -20,12 +20,21 @@ export interface QcReport {
   input: AudioProbe & { path: string };
   loudness: {
     beforeNormalization: LoudnessMeasurement;
+    normalizedPcm: LoudnessMeasurement;
+    normalizationTruePeakTargetDbtp: number;
     output: LoudnessMeasurement;
   };
   metadata: Mp3Metadata;
-  noise: NoiseAnalysis;
+  noise: {
+    afterDenoising: NoiseAnalysis;
+    beforeDenoising: NoiseAnalysis;
+    profile?: {
+      bandNoiseDb: number[];
+      interval: import("../audio/analyze.js").RoomToneInterval;
+    };
+  };
   output: VerifiedMp3Output & { path: string };
   runtime: AudioRuntime;
-  schemaVersion: 1;
+  schemaVersion: 2;
   warnings: string[];
 }

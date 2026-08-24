@@ -34,24 +34,47 @@ const ttsAvailable = sayAvailable || espeakAvailable;
 
 const qcReportSubsetSchema = z.object({
   handlingNoise: z.array(z.object({ action: z.string() })),
-  loudness: z.object({ output: z.object({ inputI: z.number(), inputTp: z.number() }) }),
+  loudness: z.object({
+    normalizedPcm: z.object({ inputI: z.number(), inputTp: z.number() }),
+    normalizationTruePeakTargetDbtp: z.number(),
+    output: z.object({ inputI: z.number(), inputTp: z.number() }),
+  }),
   metadata: z.object({ comment: z.string() }),
+  noise: z.object({
+    afterDenoising: z.object({ pauseThresholdDb: z.number(), silenceThresholdDb: z.number() }),
+    profile: z.object({ bandNoiseDb: z.array(z.number()).length(15) }),
+  }),
+  output: z.object({ artworkBytes: z.number().positive(), artworkMimeType: z.string() }),
 });
 
 describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
   let directory: string;
+  let artwork: string;
   let input: string;
   let output: string;
   let speechHandlingInput: string;
 
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "sermon-integration-"));
+    artwork = join(directory, "artwork.png");
     input = join(directory, "fixture.aiff");
     output = join(directory, "fixture.mp3");
     speechHandlingInput = join(directory, "speech-handling.aiff");
+    await execa("ffmpeg", [
+      "-hide_banner",
+      "-nostdin",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=32x32",
+      "-frames:v",
+      "1",
+      artwork,
+    ]);
     const filter = [
       "sine=frequency=220:sample_rate=48000:duration=2[a]",
-      "anullsrc=r=48000:channel_layout=mono:d=1.2[b]",
+      "anoisesrc=r=48000:d=2.5:c=pink:a=0.0003[b]",
       "sine=frequency=330:sample_rate=48000:duration=1.5,volume=0.3[c]",
       "anullsrc=r=48000:channel_layout=mono:d=0.3[d]",
       "anoisesrc=r=48000:d=0.8:c=white:a=0.08[e]",
@@ -109,8 +132,10 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
 
   it("creates and verifies a mastered MP3 with a handling-noise edit", async () => {
     const request = processRequestSchema.parse({
+      artwork,
       input,
       output,
+      qcDirectory: directory,
       metadata: {
         organization: "Example Organization",
         preacher: "Test Preacher",
@@ -128,9 +153,15 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     expect(report.handlingNoise).toContainEqual(expect.objectContaining({ action: "removed" }));
     expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-17);
     expect(report.loudness.output.inputI).toBeLessThanOrEqual(-15);
-    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1);
+    expect(report.loudness.normalizationTruePeakTargetDbtp).toBe(-4);
+    expect(report.loudness.normalizedPcm.inputTp).toBeLessThanOrEqual(-3.4);
+    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
     expect(report.metadata.comment).toBe(
       "Example Organization. Sunday, August 23, 2026. Matthew 7:7–12.",
+    );
+    expect(report.output.artworkMimeType).toBe("image/png");
+    expect(report.noise.afterDenoising.pauseThresholdDb).toBeGreaterThan(
+      report.noise.afterDenoising.silenceThresholdDb,
     );
   }, 30_000);
 
@@ -139,8 +170,10 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     async () => {
       const result = await processSermon(
         processRequestSchema.parse({
+          artwork,
           input: speechHandlingInput,
           output: join(directory, "speech-handling.mp3"),
+          qcDirectory: directory,
           metadata: {
             organization: "Example Organization",
             preacher: "Test Preacher",
@@ -148,6 +181,9 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
             date: "2026-08-23",
             scripture: "Matthew 5:9",
           },
+          // This short synthetic clip cannot reach the full-sermon loudness
+          // target while preserving the same lossy-codec peak headroom.
+          processing: { targetLufs: -18 },
         }),
       );
       const report = qcReportSubsetSchema

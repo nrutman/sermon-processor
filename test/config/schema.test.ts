@@ -4,6 +4,7 @@ import { processRequestSchema } from "../../src/config/schema.js";
 describe("processRequestSchema", () => {
   it("applies conservative processing defaults", () => {
     const request = processRequestSchema.parse({
+      artwork: "artwork.png",
       input: "sermon.aiff",
       output: "sermon.mp3",
       metadata: {
@@ -16,6 +17,7 @@ describe("processRequestSchema", () => {
     });
 
     expect(request.processing).toMatchObject({
+      leadingSpeechConfirmationSeconds: 0.1,
       silenceMinimumSeconds: 1,
       retainedSilenceSeconds: 0.4,
       targetLufs: -16,
@@ -32,6 +34,7 @@ describe("processRequestSchema", () => {
   it("rejects impossible calendar dates", () => {
     expect(() =>
       processRequestSchema.parse({
+        artwork: "artwork.png",
         input: "sermon.aiff",
         output: "sermon.mp3",
         metadata: {

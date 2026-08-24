@@ -1,4 +1,5 @@
 import { parseFile } from "music-metadata";
+import { readFile } from "node:fs/promises";
 import type { Mp3Metadata } from "../metadata/sermon-metadata.js";
 import type { AudioRuntime } from "./runtime.js";
 import type { CommandRunner } from "../process/run-command.js";
@@ -11,6 +12,7 @@ const mp3ProbeSchema = z.object({
         bit_rate: z.string().optional(),
         channels: z.number().optional(),
         codec_name: z.string().optional(),
+        codec_type: z.string().optional(),
         sample_rate: z.string().optional(),
       }),
     )
@@ -25,6 +27,8 @@ const mp3ProbeSchema = z.object({
 });
 
 export interface VerifiedMp3Output {
+  artworkBytes: number;
+  artworkMimeType: string;
   bitrateKbps: number;
   channels: number;
   codec: "mp3";
@@ -35,12 +39,20 @@ export interface VerifiedMp3Output {
 export async function verifyMp3Metadata(
   path: string,
   expected: Mp3Metadata,
+  expectedArtworkPath: string,
   runtime: AudioRuntime,
   runner: CommandRunner,
 ): Promise<VerifiedMp3Output> {
   const parsed = await parseFile(path);
   const actual = parsed.common;
   const mismatches: string[] = [];
+  const expectedArtwork = await readFile(expectedArtworkPath);
+  const artwork = actual.picture?.find((picture) =>
+    Buffer.from(picture.data).equals(expectedArtwork),
+  );
+  if (artwork === undefined) {
+    mismatches.push("artwork: expected the supplied album artwork to be embedded");
+  }
 
   const checks: Array<[string, string | undefined, string]> = [
     ["artist", actual.artist, expected.artist],
@@ -61,7 +73,7 @@ export async function verifyMp3Metadata(
     "-v",
     "error",
     "-show_entries",
-    "stream=codec_name,channels,sample_rate,bit_rate:format=duration,bit_rate:format_tags=comment",
+    "stream=codec_type,codec_name,channels,sample_rate,bit_rate:format=duration,bit_rate:format_tags=comment",
     "-of",
     "json",
     path,
@@ -72,7 +84,7 @@ export async function verifyMp3Metadata(
       `comment: expected ${JSON.stringify(expected.comment)}, received ${JSON.stringify(probeJson.format?.tags?.comment)}`,
     );
   }
-  const stream = probeJson.streams?.[0];
+  const stream = probeJson.streams?.find((candidate) => candidate.codec_type === "audio");
   if (stream?.codec_name !== "mp3") {
     mismatches.push(`codec: expected "mp3", received ${JSON.stringify(stream?.codec_name)}`);
   }
@@ -92,6 +104,8 @@ export async function verifyMp3Metadata(
     throw new Error("MP3 technical verification returned invalid duration or sample rate");
   }
   return {
+    artworkBytes: expectedArtwork.byteLength,
+    artworkMimeType: artwork?.format ?? "unknown",
     codec: "mp3",
     channels: 1,
     bitrateKbps: bitrate / 1_000,

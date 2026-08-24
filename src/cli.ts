@@ -5,6 +5,7 @@ import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { processSermon } from "./process/process-sermon.js";
 
 interface ProcessCommandOptions {
+  artwork: string;
   date: string;
   keepWorkFiles: boolean;
   output?: string;
@@ -26,6 +27,7 @@ program
   .requiredOption("--series <name>", "sermon series/album")
   .requiredOption("--date <yyyy-mm-dd>", "sermon date")
   .requiredOption("--scripture <reference>", "main preaching text")
+  .requiredOption("--artwork <path>", "JPEG or PNG album artwork")
   .option("--title <title>", "MP3 title; defaults to the scripture reference")
   .option("-o, --output <path>", "output MP3 path; overrides output configuration")
   .option("--overwrite", "replace an existing output", false)
@@ -42,6 +44,7 @@ program
     });
     const output = options.output ?? buildConfiguredOutputPath(config, metadata);
     const request = processRequestSchema.parse({
+      artwork: options.artwork,
       input,
       output,
       metadata,
