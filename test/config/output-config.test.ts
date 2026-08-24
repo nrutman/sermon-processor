@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildConfiguredOutputPath,
-  loadOutputConfig,
-  outputConfigSchema,
+  loadSermonConfig,
+  sermonConfigSchema,
 } from "../../src/config/output-config.js";
 
 const temporaryDirectories: string[] = [];
@@ -17,16 +17,17 @@ afterEach(async () => {
 });
 
 describe("output configuration", () => {
-  it("builds the Providence Church filename in Downloads", () => {
+  it("builds a configured sermon filename in Downloads", () => {
     const output = buildConfiguredOutputPath(
-      outputConfigSchema.parse({
+      sermonConfigSchema.parse({
+        organization: "Example Organization",
         outputDirectory: "~/Downloads",
-        filenameFormat: "PCOP-YYYY-MM-DD-LAST",
+        filenameFormat: "SERMON-YYYY-MM-DD-LAST",
       }),
       { date: "2026-08-23", preacher: "Rob Ivy" },
     );
 
-    expect(output).toBe(join(homedir(), "Downloads", "PCOP-2026-08-23-Ivy.mp3"));
+    expect(output).toBe(join(homedir(), "Downloads", "SERMON-2026-08-23-Ivy.mp3"));
   });
 
   it("lets .env.local override the committed .env template", async () => {
@@ -34,14 +35,15 @@ describe("output configuration", () => {
     temporaryDirectories.push(directory);
     await writeFile(
       join(directory, ".env"),
-      "SERMON_OUTPUT_DIRECTORY=/template\nSERMON_FILENAME_FORMAT=Template-YYYY-MM-DD-LAST\n",
+      "SERMON_ORGANIZATION=Template Organization\nSERMON_OUTPUT_DIRECTORY=/template\nSERMON_FILENAME_FORMAT=Template-YYYY-MM-DD-LAST\n",
     );
     await writeFile(
       join(directory, ".env.local"),
-      `SERMON_OUTPUT_DIRECTORY=${directory}\nSERMON_FILENAME_FORMAT=Sermon-YYYY-MM-DD-LAST.mp3\n`,
+      `SERMON_ORGANIZATION=Local Organization\nSERMON_OUTPUT_DIRECTORY=${directory}\nSERMON_FILENAME_FORMAT=Sermon-YYYY-MM-DD-LAST.mp3\n`,
     );
 
-    await expect(loadOutputConfig({ directory, environment: {} })).resolves.toEqual({
+    await expect(loadSermonConfig({ directory, environment: {} })).resolves.toEqual({
+      organization: "Local Organization",
       outputDirectory: directory,
       filenameFormat: "Sermon-YYYY-MM-DD-LAST.mp3",
     });
@@ -52,18 +54,20 @@ describe("output configuration", () => {
     temporaryDirectories.push(directory);
     await writeFile(
       join(directory, ".env.local"),
-      "SERMON_OUTPUT_DIRECTORY=/local\nSERMON_FILENAME_FORMAT=Local-YYYY-MM-DD-LAST\n",
+      "SERMON_ORGANIZATION=Local Organization\nSERMON_OUTPUT_DIRECTORY=/local\nSERMON_FILENAME_FORMAT=Local-YYYY-MM-DD-LAST\n",
     );
 
     await expect(
-      loadOutputConfig({
+      loadSermonConfig({
         directory,
         environment: {
+          SERMON_ORGANIZATION: "Runtime Organization",
           SERMON_OUTPUT_DIRECTORY: "/runtime",
           SERMON_FILENAME_FORMAT: "Runtime-YYYY-MM-DD-LAST",
         },
       }),
     ).resolves.toEqual({
+      organization: "Runtime Organization",
       outputDirectory: "/runtime",
       filenameFormat: "Runtime-YYYY-MM-DD-LAST",
     });
@@ -71,7 +75,8 @@ describe("output configuration", () => {
 
   it("rejects formats that omit required naming tokens", () => {
     expect(() =>
-      outputConfigSchema.parse({
+      sermonConfigSchema.parse({
+        organization: "Example Organization",
         outputDirectory: "~/Downloads",
         filenameFormat: "sermon-LAST",
       }),

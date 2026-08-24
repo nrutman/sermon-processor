@@ -10,6 +10,7 @@ const isoDate = z
   }, "Date is not valid");
 
 export const sermonMetadataSchema = z.object({
+  organization: z.string().trim().min(1),
   preacher: z.string().trim().min(1),
   sermonSeries: z.string().trim().min(1),
   date: isoDate,

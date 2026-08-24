@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { buildConfiguredOutputPath, loadOutputConfig } from "./config/output-config.js";
+import { buildConfiguredOutputPath, loadSermonConfig } from "./config/output-config.js";
 import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { processSermon } from "./process/process-sermon.js";
 
@@ -31,14 +31,16 @@ program
   .option("--overwrite", "replace an existing output", false)
   .option("--keep-work-files", "retain intermediate WAV files", false)
   .action(async (input: string, options: ProcessCommandOptions) => {
+    const config = await loadSermonConfig();
     const metadata = sermonMetadataSchema.parse({
+      organization: config.organization,
       preacher: options.preacher,
       sermonSeries: options.series,
       date: options.date,
       scripture: options.scripture,
       title: options.title,
     });
-    const output = options.output ?? buildConfiguredOutputPath(await loadOutputConfig(), metadata);
+    const output = options.output ?? buildConfiguredOutputPath(config, metadata);
     const request = processRequestSchema.parse({
       input,
       output,

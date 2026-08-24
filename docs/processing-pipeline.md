@@ -26,6 +26,6 @@ lossy encode only after all editing and mastering stages.
 The current detector intentionally favors false negatives over speech damage.
 Broadband fricatives and plosives can resemble static, so candidates without
 quiet boundaries or with Silero-detected speech are reported rather than
-removed. Representative real church recordings should be added as private
+removed. Representative real recordings should be added as private
 evaluation fixtures before thresholds are made more aggressive or an AudioSet
 classifier is introduced.

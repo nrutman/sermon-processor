@@ -7,6 +7,7 @@ describe("processRequestSchema", () => {
       input: "sermon.aiff",
       output: "sermon.mp3",
       metadata: {
+        organization: "Example Organization",
         preacher: "Jane Smith",
         sermonSeries: "The Kingdom",
         date: "2026-08-23",
@@ -34,6 +35,7 @@ describe("processRequestSchema", () => {
         input: "sermon.aiff",
         output: "sermon.mp3",
         metadata: {
+          organization: "Example Organization",
           preacher: "Jane Smith",
           sermonSeries: "The Kingdom",
           date: "2026-02-31",
