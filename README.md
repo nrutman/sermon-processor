@@ -39,14 +39,22 @@ pnpm dev process sermon.aiff \
 
 ## Output configuration
 
-`sermon.config.json` controls the default output directory and filename:
+`.env` is the committed configuration template:
 
-```json
-{
-  "outputDirectory": "~/Downloads",
-  "filenameFormat": "PCOP-YYYY-MM-DD-LAST"
-}
+```dotenv
+SERMON_OUTPUT_DIRECTORY=
+SERMON_FILENAME_FORMAT=
 ```
+
+Copy those variables into the gitignored `.env.local` and fill in the values
+for your environment:
+
+```dotenv
+SERMON_OUTPUT_DIRECTORY=~/Downloads
+SERMON_FILENAME_FORMAT=PCOP-YYYY-MM-DD-LAST
+```
+
+Runtime environment variables override `.env.local`, which overrides `.env`.
 
 The format must contain `YYYY`, `MM`, `DD`, and `LAST`. Given preacher
 `Rob Ivy` and date `2026-08-23`, the configured output is:
@@ -55,9 +63,8 @@ The format must contain `YYYY`, `MM`, `DD`, and `LAST`. Given preacher
 ~/Downloads/PCOP-2026-08-23-Ivy.mp3
 ```
 
-Use `--config <path>` for another configuration file or `--output <path>` to
-override configuration for one run. The output directory is created when it
-does not already exist.
+Use `--output <path>` to override environment configuration for one run. The
+output directory is created when it does not already exist.
 
 Dependencies must be at least three days old. This is enforced by
 `minimumReleaseAge: 4320` in `pnpm-workspace.yaml`.

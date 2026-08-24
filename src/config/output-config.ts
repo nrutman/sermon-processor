@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { parse } from "dotenv";
 import { z } from "zod";
 import type { SermonMetadata } from "./schema.js";
 
@@ -24,10 +25,10 @@ export const outputConfigSchema = z
   })
   .strict();
 
-const defaultOutputConfig = {
-  outputDirectory: "~/Downloads",
-  filenameFormat: "PCOP-YYYY-MM-DD-LAST",
-} as const;
+const outputEnvironmentSchema = z.object({
+  SERMON_OUTPUT_DIRECTORY: z.string().trim().min(1),
+  SERMON_FILENAME_FORMAT: z.string().trim().min(1),
+});
 
 export type OutputConfig = z.infer<typeof outputConfigSchema>;
 
@@ -53,21 +54,39 @@ function safeFilenameToken(value: string): string {
   return sanitized;
 }
 
-export async function loadOutputConfig(configPath?: string): Promise<OutputConfig> {
-  const path = resolve(configPath ?? "sermon.config.json");
+async function parseEnvFile(path: string): Promise<Record<string, string>> {
   try {
-    return outputConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
+    return parse(await readFile(path));
   } catch (error) {
-    if (
-      configPath === undefined &&
-      error instanceof Error &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
-      return outputConfigSchema.parse(defaultOutputConfig);
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {};
     }
-    throw new Error(`Unable to load output configuration from ${path}`, { cause: error });
+    throw new Error(`Unable to load environment configuration from ${path}`, { cause: error });
   }
+}
+
+interface LoadOutputConfigOptions {
+  directory?: string;
+  environment?: Record<string, string | undefined>;
+}
+
+export async function loadOutputConfig(
+  options: LoadOutputConfigOptions = {},
+): Promise<OutputConfig> {
+  const directory = resolve(options.directory ?? process.cwd());
+  const [template, local] = await Promise.all([
+    parseEnvFile(join(directory, ".env")),
+    parseEnvFile(join(directory, ".env.local")),
+  ]);
+  const environment = outputEnvironmentSchema.parse({
+    ...template,
+    ...local,
+    ...(options.environment ?? process.env),
+  });
+  return outputConfigSchema.parse({
+    outputDirectory: environment.SERMON_OUTPUT_DIRECTORY,
+    filenameFormat: environment.SERMON_FILENAME_FORMAT,
+  });
 }
 
 export function buildConfiguredOutputPath(

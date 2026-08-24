@@ -29,21 +29,43 @@ describe("output configuration", () => {
     expect(output).toBe(join(homedir(), "Downloads", "PCOP-2026-08-23-Ivy.mp3"));
   });
 
-  it("loads a custom configuration file", async () => {
+  it("lets .env.local override the committed .env template", async () => {
     const directory = await mkdtemp(join(tmpdir(), "sermon-config-"));
     temporaryDirectories.push(directory);
-    const configPath = join(directory, "custom.json");
     await writeFile(
-      configPath,
-      JSON.stringify({
-        outputDirectory: directory,
-        filenameFormat: "Sermon-YYYY-MM-DD-LAST.mp3",
-      }),
+      join(directory, ".env"),
+      "SERMON_OUTPUT_DIRECTORY=/template\nSERMON_FILENAME_FORMAT=Template-YYYY-MM-DD-LAST\n",
+    );
+    await writeFile(
+      join(directory, ".env.local"),
+      `SERMON_OUTPUT_DIRECTORY=${directory}\nSERMON_FILENAME_FORMAT=Sermon-YYYY-MM-DD-LAST.mp3\n`,
     );
 
-    await expect(loadOutputConfig(configPath)).resolves.toEqual({
+    await expect(loadOutputConfig({ directory, environment: {} })).resolves.toEqual({
       outputDirectory: directory,
       filenameFormat: "Sermon-YYYY-MM-DD-LAST.mp3",
+    });
+  });
+
+  it("lets runtime environment variables override env files", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sermon-config-"));
+    temporaryDirectories.push(directory);
+    await writeFile(
+      join(directory, ".env.local"),
+      "SERMON_OUTPUT_DIRECTORY=/local\nSERMON_FILENAME_FORMAT=Local-YYYY-MM-DD-LAST\n",
+    );
+
+    await expect(
+      loadOutputConfig({
+        directory,
+        environment: {
+          SERMON_OUTPUT_DIRECTORY: "/runtime",
+          SERMON_FILENAME_FORMAT: "Runtime-YYYY-MM-DD-LAST",
+        },
+      }),
+    ).resolves.toEqual({
+      outputDirectory: "/runtime",
+      filenameFormat: "Runtime-YYYY-MM-DD-LAST",
     });
   });
 

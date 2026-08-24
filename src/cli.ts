@@ -5,7 +5,6 @@ import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { processSermon } from "./process/process-sermon.js";
 
 interface ProcessCommandOptions {
-  config?: string;
   date: string;
   keepWorkFiles: boolean;
   output?: string;
@@ -28,7 +27,6 @@ program
   .requiredOption("--date <yyyy-mm-dd>", "sermon date")
   .requiredOption("--scripture <reference>", "main preaching text")
   .option("--title <title>", "MP3 title; defaults to the scripture reference")
-  .option("--config <path>", "output configuration path; defaults to sermon.config.json")
   .option("-o, --output <path>", "output MP3 path; overrides output configuration")
   .option("--overwrite", "replace an existing output", false)
   .option("--keep-work-files", "retain intermediate WAV files", false)
@@ -40,8 +38,7 @@ program
       scripture: options.scripture,
       title: options.title,
     });
-    const output =
-      options.output ?? buildConfiguredOutputPath(await loadOutputConfig(options.config), metadata);
+    const output = options.output ?? buildConfiguredOutputPath(await loadOutputConfig(), metadata);
     const request = processRequestSchema.parse({
       input,
       output,
