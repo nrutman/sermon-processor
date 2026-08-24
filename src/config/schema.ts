@@ -29,6 +29,7 @@ const defaultHandlingNoise = {
 export const processingOptionsSchema = z.object({
   highpassHz: z.number().int().min(20).max(200).default(75),
   noiseReductionDb: z.number().min(0).max(24).default(10),
+  leadingSpeechConfirmationSeconds: z.number().min(0.05).max(0.5).default(0.1),
   silenceMinimumSeconds: z.number().min(0.5).max(10).default(1),
   retainedSilenceSeconds: z.number().min(0.1).max(1).default(0.4),
   targetLufs: z.number().min(-24).max(-12).default(-16),
@@ -48,6 +49,7 @@ export const processingOptionsSchema = z.object({
 const defaultProcessingOptions = {
   highpassHz: 75,
   noiseReductionDb: 10,
+  leadingSpeechConfirmationSeconds: 0.1,
   silenceMinimumSeconds: 1,
   retainedSilenceSeconds: 0.4,
   targetLufs: -16,
@@ -57,6 +59,10 @@ const defaultProcessingOptions = {
 } as const;
 
 export const processRequestSchema = z.object({
+  artwork: z
+    .string()
+    .min(1)
+    .transform((value) => resolve(value)),
   input: z
     .string()
     .min(1)
@@ -64,6 +70,11 @@ export const processRequestSchema = z.object({
   output: z
     .string()
     .min(1)
+    .transform((value) => resolve(value)),
+  qcDirectory: z
+    .string()
+    .min(1)
+    .default(".sermon-qc")
     .transform((value) => resolve(value)),
   metadata: sermonMetadataSchema,
   processing: processingOptionsSchema.default(defaultProcessingOptions),
@@ -79,5 +90,12 @@ export function assertAiffPath(path: string): void {
   const extension = extname(path).toLowerCase();
   if (extension !== ".aiff" && extension !== ".aif") {
     throw new Error(`Input must be an AIFF file; received ${extension || "no extension"}`);
+  }
+}
+
+export function assertArtworkPath(path: string): void {
+  const extension = extname(path).toLowerCase();
+  if (![".jpg", ".jpeg", ".png"].includes(extension)) {
+    throw new Error(`Artwork must be a JPEG or PNG file; received ${extension || "no extension"}`);
   }
 }

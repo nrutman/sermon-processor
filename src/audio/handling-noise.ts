@@ -107,7 +107,7 @@ async function extractSpectralFrames(
   return parseSpectralFrames(result.stderr);
 }
 
-async function detectSpeechSegments(
+export async function detectSpeechSegments(
   input: string,
   rawAudioPath: string,
   runtime: AudioRuntime,
@@ -344,6 +344,7 @@ export async function removeHandlingNoise(
   durationSeconds: number,
   silenceThresholdDb: number,
   options: ProcessingOptions["handlingNoise"],
+  speechSegments: SpeechSegment[],
   runtime: AudioRuntime,
   runner: CommandRunner,
 ): Promise<HandlingNoiseEvent[]> {
@@ -353,12 +354,6 @@ export async function removeHandlingNoise(
   }
 
   const frames = await extractSpectralFrames(analysisInput, runtime, runner);
-  const speechSegments = await detectSpeechSegments(
-    analysisInput,
-    `${output}.vad.f32`,
-    runtime,
-    runner,
-  );
   const events = classifyHandlingNoise(frames, silenceThresholdDb, options, speechSegments);
   const filter = buildRemovalFilter(durationSeconds, events, options.crossfadeSeconds);
   if (filter === undefined) {

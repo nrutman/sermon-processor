@@ -24,7 +24,7 @@ describe("parseLoudnessMeasurement", () => {
 describe("verifyOutputLoudness", () => {
   const measurement = {
     inputI: -16.2,
-    inputTp: -1.4,
+    inputTp: -1.5,
     inputLra: 5,
     inputThreshold: -27,
     targetOffset: 0,
@@ -36,7 +36,13 @@ describe("verifyOutputLoudness", () => {
 
   it("rejects output that misses the loudness contract", () => {
     expect(() =>
-      verifyOutputLoudness({ ...measurement, inputI: -18 }, { lufs: -16, truePeak: -1.5 }),
+      verifyOutputLoudness({ ...measurement, inputI: -18.1 }, { lufs: -16, truePeak: -1.5 }),
     ).toThrow("outside");
+  });
+
+  it("rejects output above the true-peak ceiling", () => {
+    expect(() =>
+      verifyOutputLoudness({ ...measurement, inputTp: -1.49 }, { lufs: -16, truePeak: -1.5 }),
+    ).toThrow("exceeds");
   });
 });

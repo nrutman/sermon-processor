@@ -1,5 +1,6 @@
 import type { AudioRuntime } from "./runtime.js";
 import type { CommandRunner } from "../process/run-command.js";
+import type { SpeechSegment } from "./handling-noise.js";
 
 export interface SilenceInterval {
   durationSeconds: number;
@@ -9,10 +10,46 @@ export interface SilenceInterval {
 
 export interface NoiseAnalysis {
   noiseFloorDb: number;
+  pauseThresholdDb: number;
   sampledIntervals: Array<SilenceInterval & { rmsDb: number }>;
   silenceIntervals: SilenceInterval[];
   silenceThresholdDb: number;
   usedFallback: boolean;
+}
+
+export interface RoomToneInterval extends SilenceInterval {
+  rmsDb: number;
+}
+
+export function selectRoomToneInterval(
+  noise: NoiseAnalysis,
+  speechSegments: SpeechSegment[],
+): RoomToneInterval | undefined {
+  const candidate = noise.sampledIntervals
+    .filter((interval) => interval.durationSeconds >= 1)
+    .filter(
+      (interval) =>
+        !speechSegments.some(
+          (speech) =>
+            Math.min(speech.endSeconds, interval.endSeconds) -
+              Math.max(speech.startSeconds, interval.startSeconds) >
+            0,
+        ),
+    )
+    .toSorted(
+      (left, right) => right.durationSeconds - left.durationSeconds || left.rmsDb - right.rmsDb,
+    )[0];
+  if (candidate === undefined) {
+    return undefined;
+  }
+  const durationSeconds = Math.min(3, candidate.durationSeconds);
+  const startSeconds = candidate.startSeconds + (candidate.durationSeconds - durationSeconds) / 2;
+  return {
+    startSeconds,
+    endSeconds: startSeconds + durationSeconds,
+    durationSeconds,
+    rmsDb: candidate.rmsDb,
+  };
 }
 
 function parseSilences(output: string, durationSeconds: number): SilenceInterval[] {
@@ -179,6 +216,7 @@ export async function analyzeNoiseFloor(
 
   return {
     noiseFloorDb,
+    pauseThresholdDb: clamp(noiseFloorDb + 12, -50, -25),
     sampledIntervals,
     silenceIntervals,
     silenceThresholdDb: clamp(noiseFloorDb + 6, -55, -25),

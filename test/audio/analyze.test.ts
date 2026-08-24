@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisInternals } from "../../src/audio/analyze.js";
+import { analysisInternals, selectRoomToneInterval } from "../../src/audio/analyze.js";
 
 describe("audio analysis", () => {
   it("pairs silence events and closes a trailing interval", () => {
@@ -28,5 +28,23 @@ describe("audio analysis", () => {
       "lavfi.astats.Overall.RMS_level=-100",
     ].join("\n");
     expect(analysisInternals.parseFrameRms(output)).toEqual([-48.5, -22]);
+  });
+
+  it("selects the longest sampled interval without detected speech", () => {
+    const short = { startSeconds: 1, endSeconds: 2.5, durationSeconds: 1.5, rmsDb: -60 };
+    const longest = { startSeconds: 10, endSeconds: 15, durationSeconds: 5, rmsDb: -62 };
+    expect(
+      selectRoomToneInterval(
+        {
+          noiseFloorDb: -62,
+          pauseThresholdDb: -50,
+          sampledIntervals: [short, longest],
+          silenceIntervals: [short, longest],
+          silenceThresholdDb: -55,
+          usedFallback: false,
+        },
+        [{ startSeconds: 1.5, endSeconds: 2 }],
+      ),
+    ).toEqual({ startSeconds: 11, endSeconds: 14, durationSeconds: 3, rmsDb: -62 });
   });
 });

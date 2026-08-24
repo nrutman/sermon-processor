@@ -34,7 +34,8 @@ pnpm dev process sermon.aiff \
   --preacher "John Smith" \
   --series "Sermon on the Mount" \
   --date 2026-08-23 \
-  --scripture "Matthew 7:7–12"
+  --scripture "Matthew 7:7–12" \
+  --artwork "sermon-on-the-mount.png"
 ```
 
 ## Output configuration
@@ -67,6 +68,9 @@ The format must contain `YYYY`, `MM`, `DD`, and `LAST`. Given preacher
 
 Use `--output <path>` to override environment configuration for one run. The
 output directory is created when it does not already exist.
+
+QC reports are written to the gitignored `.sermon-qc/` directory in the project
+root, using the MP3 filename with a `.qc.json` suffix.
 
 Dependencies must be at least three days old. This is enforced by
 `minimumReleaseAge: 4320` in `pnpm-workspace.yaml`.

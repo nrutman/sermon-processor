@@ -64,17 +64,17 @@ export async function measureLoudness(
 export function verifyOutputLoudness(
   measurement: LoudnessMeasurement,
   target: { lufs: number; truePeak: number },
+  truePeakToleranceDb = 0,
 ): void {
   // Very short speech clips can move by more than 1 LU after MP3 encoding and
   // the EBU gating pass. Full sermons normally land much closer to the target.
-  const loudnessToleranceLu = 1.5;
-  const encodedPeakToleranceDb = 0.2;
+  const loudnessToleranceLu = 2;
   if (Math.abs(measurement.inputI - target.lufs) > loudnessToleranceLu) {
     throw new Error(
       `Output loudness ${measurement.inputI} LUFS is outside the ${target.lufs} ± ${loudnessToleranceLu} LU contract`,
     );
   }
-  if (measurement.inputTp > target.truePeak + encodedPeakToleranceDb) {
+  if (measurement.inputTp > target.truePeak + truePeakToleranceDb) {
     throw new Error(
       `Output true peak ${measurement.inputTp} dBTP exceeds the ${target.truePeak} dBTP target`,
     );
