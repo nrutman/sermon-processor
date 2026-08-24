@@ -48,8 +48,9 @@ Pass subprocess arguments as arrays. Do not interpolate shell command strings.
 Inject `CommandRunner` in tests instead of adding test-only dependencies to
 production interfaces.
 
-Keep output naming configurable through `sermon.config.json`; do not hardcode
-paths or filename formats in the CLI.
+Keep output naming configurable through `.env` and `.env.local`; do not hardcode
+paths or filename formats in the CLI. `.env` is the committed template.
+`.env.local` contains runtime values and must remain gitignored.
 
 ## Testing
 

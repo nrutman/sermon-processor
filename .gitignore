@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .sermon-work/
+.env.local
 *.aiff
 *.aif
 *.wav
