@@ -48,6 +48,9 @@ Pass subprocess arguments as arrays. Do not interpolate shell command strings.
 Inject `CommandRunner` in tests instead of adding test-only dependencies to
 production interfaces.
 
+Keep output naming configurable through `sermon.config.json`; do not hardcode
+paths or filename formats in the CLI.
+
 ## Testing
 
 Assert observable behavior and audio metrics rather than exact encoded bytes.

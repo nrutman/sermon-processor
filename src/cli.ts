@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { basename, dirname, extname, join } from "node:path";
 import { Command } from "commander";
-import { processRequestSchema } from "./config/schema.js";
+import { buildConfiguredOutputPath, loadOutputConfig } from "./config/output-config.js";
+import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { processSermon } from "./process/process-sermon.js";
 
 interface ProcessCommandOptions {
+  config?: string;
   date: string;
   keepWorkFiles: boolean;
   output?: string;
@@ -13,11 +14,6 @@ interface ProcessCommandOptions {
   scripture: string;
   series: string;
   title?: string;
-}
-
-function defaultOutput(input: string): string {
-  const extension = extname(input);
-  return join(dirname(input), `${basename(input, extension)}.mp3`);
 }
 
 const program = new Command();
@@ -32,20 +28,24 @@ program
   .requiredOption("--date <yyyy-mm-dd>", "sermon date")
   .requiredOption("--scripture <reference>", "main preaching text")
   .option("--title <title>", "MP3 title; defaults to the scripture reference")
-  .option("-o, --output <path>", "output MP3 path")
+  .option("--config <path>", "output configuration path; defaults to sermon.config.json")
+  .option("-o, --output <path>", "output MP3 path; overrides output configuration")
   .option("--overwrite", "replace an existing output", false)
   .option("--keep-work-files", "retain intermediate WAV files", false)
   .action(async (input: string, options: ProcessCommandOptions) => {
+    const metadata = sermonMetadataSchema.parse({
+      preacher: options.preacher,
+      sermonSeries: options.series,
+      date: options.date,
+      scripture: options.scripture,
+      title: options.title,
+    });
+    const output =
+      options.output ?? buildConfiguredOutputPath(await loadOutputConfig(options.config), metadata);
     const request = processRequestSchema.parse({
       input,
-      output: options.output ?? defaultOutput(input),
-      metadata: {
-        preacher: options.preacher,
-        sermonSeries: options.series,
-        date: options.date,
-        scripture: options.scripture,
-        title: options.title,
-      },
+      output,
+      metadata,
       overwrite: options.overwrite,
       keepWorkFiles: options.keepWorkFiles,
     });

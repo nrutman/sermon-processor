@@ -36,6 +36,9 @@ pnpm dev process <input.aiff> \
 Never add `--overwrite` without confirming that replacing the existing MP3 is
 intended. Never modify the AIFF source.
 
+Unless `--output` is supplied, use `sermon.config.json`. The repository default
+writes `PCOP-YYYY-MM-DD-LAST.mp3` to `~/Downloads`.
+
 ## Review
 
 Read `<output.mp3>.qc.json` and report:
