@@ -112,6 +112,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
       input,
       output,
       metadata: {
+        organization: "Example Organization",
         preacher: "Test Preacher",
         sermonSeries: "Test Series",
         date: "2026-08-23",
@@ -129,7 +130,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     expect(report.loudness.output.inputI).toBeLessThanOrEqual(-15);
     expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1);
     expect(report.metadata.comment).toBe(
-      "Providence Church. Sunday, August 23, 2026. Matthew 7:7–12.",
+      "Example Organization. Sunday, August 23, 2026. Matthew 7:7–12.",
     );
   }, 30_000);
 
@@ -141,6 +142,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
           input: speechHandlingInput,
           output: join(directory, "speech-handling.mp3"),
           metadata: {
+            organization: "Example Organization",
             preacher: "Test Preacher",
             sermonSeries: "Test Series",
             date: "2026-08-23",

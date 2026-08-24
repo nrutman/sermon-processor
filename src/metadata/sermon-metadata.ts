@@ -1,7 +1,5 @@
 import type { SermonMetadata } from "../config/schema.js";
 
-const churchName = "Providence Church";
-
 export interface Mp3Metadata {
   album: string;
   albumArtist: string;
@@ -26,10 +24,10 @@ export function buildMp3Metadata(metadata: SermonMetadata): Mp3Metadata {
   return {
     artist: metadata.preacher,
     album: metadata.sermonSeries,
-    albumArtist: churchName,
+    albumArtist: metadata.organization,
     genre: "Preaching",
     title: metadata.title ?? metadata.scripture,
     date: metadata.date.slice(0, 4),
-    comment: `${churchName}. ${formatSermonDate(metadata.date)}. ${metadata.scripture}.`,
+    comment: `${metadata.organization}. ${formatSermonDate(metadata.date)}. ${metadata.scripture}.`,
   };
 }

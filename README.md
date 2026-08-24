@@ -42,6 +42,7 @@ pnpm dev process sermon.aiff \
 `.env` is the committed configuration template:
 
 ```dotenv
+SERMON_ORGANIZATION=
 SERMON_OUTPUT_DIRECTORY=
 SERMON_FILENAME_FORMAT=
 ```
@@ -50,8 +51,9 @@ Copy those variables into the gitignored `.env.local` and fill in the values
 for your environment:
 
 ```dotenv
+SERMON_ORGANIZATION=Example Organization
 SERMON_OUTPUT_DIRECTORY=~/Downloads
-SERMON_FILENAME_FORMAT=PCOP-YYYY-MM-DD-LAST
+SERMON_FILENAME_FORMAT=SERMON-YYYY-MM-DD-LAST
 ```
 
 Runtime environment variables override `.env.local`, which overrides `.env`.
@@ -60,7 +62,7 @@ The format must contain `YYYY`, `MM`, `DD`, and `LAST`. Given preacher
 `Rob Ivy` and date `2026-08-23`, the configured output is:
 
 ```text
-~/Downloads/PCOP-2026-08-23-Ivy.mp3
+~/Downloads/SERMON-2026-08-23-Ivy.mp3
 ```
 
 Use `--output <path>` to override environment configuration for one run. The

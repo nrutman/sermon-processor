@@ -7,8 +7,9 @@ import type { SermonMetadata } from "./schema.js";
 
 const requiredFilenameTokens = ["YYYY", "MM", "DD", "LAST"] as const;
 
-export const outputConfigSchema = z
+export const sermonConfigSchema = z
   .object({
+    organization: z.string().trim().min(1),
     outputDirectory: z.string().trim().min(1),
     filenameFormat: z
       .string()
@@ -26,11 +27,12 @@ export const outputConfigSchema = z
   .strict();
 
 const outputEnvironmentSchema = z.object({
+  SERMON_ORGANIZATION: z.string().trim().min(1),
   SERMON_OUTPUT_DIRECTORY: z.string().trim().min(1),
   SERMON_FILENAME_FORMAT: z.string().trim().min(1),
 });
 
-export type OutputConfig = z.infer<typeof outputConfigSchema>;
+export type SermonConfig = z.infer<typeof sermonConfigSchema>;
 
 function expandHomeDirectory(path: string): string {
   if (path === "~") {
@@ -65,14 +67,14 @@ async function parseEnvFile(path: string): Promise<Record<string, string>> {
   }
 }
 
-interface LoadOutputConfigOptions {
+interface LoadSermonConfigOptions {
   directory?: string;
   environment?: Record<string, string | undefined>;
 }
 
-export async function loadOutputConfig(
-  options: LoadOutputConfigOptions = {},
-): Promise<OutputConfig> {
+export async function loadSermonConfig(
+  options: LoadSermonConfigOptions = {},
+): Promise<SermonConfig> {
   const directory = resolve(options.directory ?? process.cwd());
   const [template, local] = await Promise.all([
     parseEnvFile(join(directory, ".env")),
@@ -83,14 +85,15 @@ export async function loadOutputConfig(
     ...local,
     ...(options.environment ?? process.env),
   });
-  return outputConfigSchema.parse({
+  return sermonConfigSchema.parse({
+    organization: environment.SERMON_ORGANIZATION,
     outputDirectory: environment.SERMON_OUTPUT_DIRECTORY,
     filenameFormat: environment.SERMON_FILENAME_FORMAT,
   });
 }
 
 export function buildConfiguredOutputPath(
-  config: OutputConfig,
+  config: SermonConfig,
   metadata: Pick<SermonMetadata, "date" | "preacher">,
 ): string {
   const [year, month, day] = metadata.date.split("-");

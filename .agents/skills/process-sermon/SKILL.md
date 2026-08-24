@@ -1,6 +1,6 @@
 ---
 name: process-sermon
-description: Processes a Providence Church AIFF sermon recording into a cleaned, leveled, 64 kbps MP3 and reviews its QC report. Use when preparing Sunday sermon audio for publication.
+description: Processes an AIFF sermon recording into a cleaned, leveled, 64 kbps MP3 and reviews its QC report. Use when preparing sermon audio for publication.
 compatibility: Requires Node.js 22+, pnpm 11, FFmpeg, and FFprobe.
 ---
 
