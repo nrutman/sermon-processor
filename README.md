@@ -37,6 +37,28 @@ pnpm dev process sermon.aiff \
   --scripture "Matthew 7:7–12"
 ```
 
+## Output configuration
+
+`sermon.config.json` controls the default output directory and filename:
+
+```json
+{
+  "outputDirectory": "~/Downloads",
+  "filenameFormat": "PCOP-YYYY-MM-DD-LAST"
+}
+```
+
+The format must contain `YYYY`, `MM`, `DD`, and `LAST`. Given preacher
+`Rob Ivy` and date `2026-08-23`, the configured output is:
+
+```text
+~/Downloads/PCOP-2026-08-23-Ivy.mp3
+```
+
+Use `--config <path>` for another configuration file or `--output <path>` to
+override configuration for one run. The output directory is created when it
+does not already exist.
+
 Dependencies must be at least three days old. This is enforced by
 `minimumReleaseAge: 4320` in `pnpm-workspace.yaml`.
 
