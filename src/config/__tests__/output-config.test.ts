@@ -6,7 +6,7 @@ import {
   buildConfiguredOutputPath,
   loadSermonConfig,
   sermonConfigSchema,
-} from "../../src/config/output-config.js";
+} from "../output-config.js";
 
 const temporaryDirectories: string[] = [];
 

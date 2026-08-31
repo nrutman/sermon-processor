@@ -14,10 +14,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
-    "dev": "tsx src/cli.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint --type-aware --vitest-plugin --deny-warnings .",
+    "plan-metadata": "tsx src/cli.ts plan-metadata",
     "process": "tsx src/cli.ts process",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

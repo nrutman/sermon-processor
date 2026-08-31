@@ -3,8 +3,8 @@ import {
   classifyHandlingNoise,
   parseSpectralFrames,
   type SpectralFrame,
-} from "../../src/audio/handling-noise.js";
-import { processingOptionsSchema } from "../../src/config/schema.js";
+} from "../handling-noise.js";
+import { processingOptionsSchema } from "../../config/schema.js";
 
 const options = processingOptionsSchema.parse({}).handlingNoise;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLoudnessMeasurement, verifyOutputLoudness } from "../../src/audio/loudness.js";
+import { parseLoudnessMeasurement, verifyOutputLoudness } from "../loudness.js";
 
 describe("parseLoudnessMeasurement", () => {
   it("extracts FFmpeg loudnorm JSON from surrounding log output", () => {

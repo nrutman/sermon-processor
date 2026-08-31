@@ -17,5 +17,5 @@
     "target": "ES2023",
     "types": ["node"]
   },
-  "include": ["src", "test", "vitest.config.ts"]
+  "include": ["src", "vitest.config.ts"]
 }

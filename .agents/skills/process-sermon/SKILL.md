@@ -8,11 +8,24 @@ compatibility: Requires Node.js 22+, pnpm 11, FFmpeg, and FFprobe.
 
 ## Gather metadata
 
-Obtain the AIFF path, preacher, sermon series, ISO sermon date, and main
-scripture reference. Also obtain JPEG or PNG album artwork as a local path or
-URL. Ask for a title only when it should differ from the scripture reference.
+Obtain the AIFF path and ISO sermon date. When Planning Center configuration is
+available, first run:
 
-When artwork is supplied as a URL, download it with `curl -fL`, confirm that
+```sh
+pnpm plan-metadata --date <yyyy-mm-dd> --json
+```
+
+Present the inferred preacher, sermon series, scripture reference, title, and
+artwork to the user for confirmation before processing. Never treat inferred
+metadata as confirmed merely because it came from the service plan.
+
+When Planning Center is unavailable or leaves a field blank, obtain the
+preacher, sermon series, main scripture reference, and JPEG or PNG album
+artwork as a local path or URL. Ask for a title only when it should differ from
+the scripture reference.
+
+When artwork is supplied as a URL or returned by Planning Center, download it
+with `curl -fL`, confirm that
 `file` identifies it as JPEG or PNG, and pass the local file to the CLI. Do not
 infer or reuse artwork from another series without confirmation.
 
@@ -30,7 +43,7 @@ If FFmpeg is unavailable on macOS, ask before running `brew install ffmpeg`.
 ## Process
 
 ```sh
-pnpm dev process <input.aiff> \
+pnpm process <input.aiff> \
   --preacher "<preacher>" \
   --series "<series>" \
   --date <yyyy-mm-dd> \

@@ -1,8 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { parse } from "dotenv";
 import { z } from "zod";
+import { loadEnvironmentConfiguration, type EnvironmentLoadOptions } from "./environment.js";
 import type { SermonMetadata } from "./schema.js";
 
 const requiredFilenameTokens = ["YYYY", "MM", "DD", "LAST"] as const;
@@ -56,34 +55,11 @@ function safeFilenameToken(value: string): string {
   return sanitized;
 }
 
-async function parseEnvFile(path: string): Promise<Record<string, string>> {
-  try {
-    return parse(await readFile(path));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return {};
-    }
-    throw new Error(`Unable to load environment configuration from ${path}`, { cause: error });
-  }
-}
-
-interface LoadSermonConfigOptions {
-  directory?: string;
-  environment?: Record<string, string | undefined>;
-}
-
 export async function loadSermonConfig(
-  options: LoadSermonConfigOptions = {},
+  options: EnvironmentLoadOptions = {},
 ): Promise<SermonConfig> {
-  const directory = resolve(options.directory ?? process.cwd());
-  const [template, local] = await Promise.all([
-    parseEnvFile(join(directory, ".env")),
-    parseEnvFile(join(directory, ".env.local")),
-  ]);
   const environment = outputEnvironmentSchema.parse({
-    ...template,
-    ...local,
-    ...(options.environment ?? process.env),
+    ...(await loadEnvironmentConfiguration(options)),
   });
   return sermonConfigSchema.parse({
     organization: environment.SERMON_ORGANIZATION,

@@ -30,7 +30,7 @@ On macOS, install FFmpeg with `brew install ffmpeg`.
 ```sh
 pnpm install
 pnpm check
-pnpm dev process sermon.aiff \
+pnpm process sermon.aiff \
   --preacher "John Smith" \
   --series "Sermon on the Mount" \
   --date 2026-08-23 \
@@ -38,23 +38,35 @@ pnpm dev process sermon.aiff \
   --artwork "sermon-on-the-mount.png"
 ```
 
-## Output configuration
+## Planning Center metadata
 
-`.env` is the committed configuration template:
+The read-only Planning Center lookup can infer the date, preacher, sermon
+series, scripture, title, and Series artwork from a Services plan:
 
-```dotenv
-SERMON_ORGANIZATION=
-SERMON_OUTPUT_DIRECTORY=
-SERMON_FILENAME_FORMAT=
+```sh
+pnpm plan-metadata --date 2026-08-30
+pnpm plan-metadata --date 2026-08-30 --json
 ```
 
-Copy those variables into the gitignored `.env.local` and fill in the values
-for your environment:
+Configure the Personal Access Token credentials documented in `.env`. A
+default Services Service Type is optional.
 
-```dotenv
-SERMON_ORGANIZATION=Example Organization
-SERMON_OUTPUT_DIRECTORY=~/Downloads
-SERMON_FILENAME_FORMAT=SERMON-YYYY-MM-DD-LAST
+Pass `--service-type <id>` to override the configured Service Type. If more
+than one plan exists on a date, pass `--plan-id <id>`. The command only makes
+Planning Center `GET` requests. Its JSON output includes the original Series
+artwork URL and image metadata when the linked Services Series has artwork.
+
+Review the inferred fields before processing. Download Series artwork with
+`curl -fL`, confirm that `file` identifies it as JPEG or PNG, and then pass its
+local path to `process` with `--artwork`.
+
+## Output configuration
+
+`.env` is the checked-in configuration template and documents every supported
+variable. Copy it to the gitignored `.env.local`, then fill in local values:
+
+```sh
+cp .env .env.local
 ```
 
 Runtime environment variables override `.env.local`, which overrides `.env`.

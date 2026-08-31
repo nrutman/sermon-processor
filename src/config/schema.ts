@@ -1,7 +1,7 @@
 import { extname, resolve } from "node:path";
 import { z } from "zod";
 
-const isoDate = z
+export const isoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Use an ISO date such as 2026-08-23")
   .refine((value) => {
@@ -13,7 +13,7 @@ export const sermonMetadataSchema = z.object({
   organization: z.string().trim().min(1),
   preacher: z.string().trim().min(1),
   sermonSeries: z.string().trim().min(1),
-  date: isoDate,
+  date: isoDateSchema,
   scripture: z.string().trim().min(1),
   title: z.string().trim().min(1).optional(),
 });
