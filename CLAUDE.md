@@ -42,7 +42,7 @@ and `minimumReleaseAgeStrict: true` in `pnpm-workspace.yaml`.
 - `src/process/`: pipeline orchestration and subprocess boundary
 - `src/report/`: stable machine-readable QC report contracts
 - `src/metadata/`: sermon-specific metadata formatting
-- `test/`: unit tests plus generated integration fixtures
+- `src/**/__tests__/`: colocated unit and integration tests
 
 Pass subprocess arguments as arrays. Do not interpolate shell command strings.
 Inject `CommandRunner` in tests instead of adding test-only dependencies to

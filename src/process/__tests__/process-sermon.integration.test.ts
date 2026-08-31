@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execa } from "execa";
 import { z } from "zod";
-import { processSermon } from "../../src/process/process-sermon.js";
-import { processRequestSchema } from "../../src/config/schema.js";
+import { processRequestSchema } from "../../config/schema.js";
+import { processSermon } from "../process-sermon.js";
 
 async function hasFfmpeg(): Promise<boolean> {
   try {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisInternals, selectRoomToneInterval } from "../../src/audio/analyze.js";
+import { analysisInternals, selectRoomToneInterval } from "../analyze.js";
 
 describe("audio analysis", () => {
   it("pairs silence events and closes a trailing interval", () => {

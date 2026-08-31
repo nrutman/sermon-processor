@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlanningCenterClient } from "../../src/planning-center/client.js";
+import { PlanningCenterClient } from "../client.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,6 +41,26 @@ describe("PlanningCenterClient", () => {
     expect(firstRequest?.[1]).not.toHaveProperty("method");
     expect(new Headers(firstRequest?.[1]?.headers).get("Authorization")).toBe(
       `Basic ${Buffer.from("client:secret").toString("base64")}`,
+    );
+  });
+
+  it("includes Planning Center error details in request failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response("permission denied", { status: 403, statusText: "Forbidden" }),
+        ),
+    );
+    const client = new PlanningCenterClient({
+      clientId: "client",
+      secret: "secret",
+      userAgent: "Sermon Processor (test@example.com)",
+    });
+
+    await expect(client.getSeries("series-1")).rejects.toThrow(
+      "Planning Center request failed (403 Forbidden): permission denied",
     );
   });
 });

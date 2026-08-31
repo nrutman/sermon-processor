@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  createPremaster,
-  encodeMp3,
-  normalizePremaster,
-  parseNoiseProfile,
-} from "../../src/audio/render.js";
-import type { AudioRuntime } from "../../src/audio/runtime.js";
-import type { CommandRunner } from "../../src/process/run-command.js";
+import { createPremaster, encodeMp3, normalizePremaster, parseNoiseProfile } from "../render.js";
+import type { AudioRuntime } from "../runtime.js";
+import type { CommandRunner } from "../../process/run-command.js";
 
 const runtime: AudioRuntime = {
   ffmpegPath: "ffmpeg",

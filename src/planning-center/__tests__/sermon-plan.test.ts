@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  PlanningCenterReadApi,
-  PlanningCenterResource,
-} from "../../src/planning-center/client.js";
-import { readSermonPlanMetadata } from "../../src/planning-center/sermon-plan.js";
+import type { PlanningCenterReadApi, PlanningCenterResource } from "../client.js";
+import { readSermonPlanMetadata } from "../sermon-plan.js";
 
 function resource<Attributes>(
   type: string,

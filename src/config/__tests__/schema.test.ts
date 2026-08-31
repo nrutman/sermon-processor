@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { processRequestSchema } from "../../src/config/schema.js";
+import { assertAiffPath, assertArtworkPath, processRequestSchema } from "../schema.js";
 
 describe("processRequestSchema", () => {
   it("applies conservative processing defaults", () => {
@@ -46,5 +46,12 @@ describe("processRequestSchema", () => {
         },
       }),
     ).toThrow("Date is not valid");
+  });
+
+  it.each([
+    ["recording.wav", assertAiffPath, "Input must be an AIFF file"],
+    ["artwork.gif", assertArtworkPath, "Artwork must be a JPEG or PNG file"],
+  ])("rejects an unsupported path for %s", (path, assertPath, message) => {
+    expect(() => assertPath(path)).toThrow(message);
   });
 });

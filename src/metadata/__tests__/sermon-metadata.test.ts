@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMp3Metadata, formatSermonDate } from "../../src/metadata/sermon-metadata.js";
+import { buildMp3Metadata, formatSermonDate } from "../sermon-metadata.js";
 
 describe("sermon metadata", () => {
   it("formats an organization comment with Unicode scripture punctuation", () => {

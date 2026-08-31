@@ -2,9 +2,9 @@ import { access, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { processRequestSchema } from "../../src/config/schema.js";
-import { processSermon } from "../../src/process/process-sermon.js";
-import type { CommandRunner } from "../../src/process/run-command.js";
+import { processRequestSchema } from "../../config/schema.js";
+import { processSermon } from "../process-sermon.js";
+import type { CommandRunner } from "../run-command.js";
 
 describe("processSermon failure handling", () => {
   it("preserves and reports its work directory when processing fails", async () => {
