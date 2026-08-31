@@ -38,6 +38,35 @@ pnpm dev process sermon.aiff \
   --artwork "sermon-on-the-mount.png"
 ```
 
+## Planning Center metadata
+
+The read-only Planning Center lookup can infer the date, preacher, sermon
+series, scripture, title, and Series artwork from a Services plan:
+
+```sh
+pnpm dev plan-metadata --date 2026-08-30
+pnpm dev plan-metadata --date 2026-08-30 --json
+```
+
+Add Personal Access Token credentials and a default Services Service Type to
+`.env.local`:
+
+```dotenv
+PLANNING_CENTER_CLIENT_ID=
+PLANNING_CENTER_SECRET=
+PLANNING_CENTER_USER_AGENT="Sermon Processor (your-email@example.com)"
+PLANNING_CENTER_DEFAULT_SERVICE_TYPE_ID=
+```
+
+Pass `--service-type <id>` to override the configured Service Type. If more
+than one plan exists on a date, pass `--plan-id <id>`. The command only makes
+Planning Center `GET` requests. Its JSON output includes the original Series
+artwork URL and image metadata when the linked Services Series has artwork.
+
+Review the inferred fields before processing. Download Series artwork with
+`curl -fL`, confirm that `file` identifies it as JPEG or PNG, and then pass its
+local path to `process` with `--artwork`.
+
 ## Output configuration
 
 `.env` is the committed configuration template:
@@ -46,6 +75,11 @@ pnpm dev process sermon.aiff \
 SERMON_ORGANIZATION=
 SERMON_OUTPUT_DIRECTORY=
 SERMON_FILENAME_FORMAT=
+
+PLANNING_CENTER_CLIENT_ID=
+PLANNING_CENTER_SECRET=
+PLANNING_CENTER_USER_AGENT=
+# PLANNING_CENTER_DEFAULT_SERVICE_TYPE_ID=
 ```
 
 Copy those variables into the gitignored `.env.local` and fill in the values

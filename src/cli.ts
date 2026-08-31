@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { buildConfiguredOutputPath, loadSermonConfig } from "./config/output-config.js";
+import { loadPlanningCenterConfig } from "./config/planning-center-config.js";
 import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
+import { PlanningCenterClient } from "./planning-center/client.js";
+import { readSermonPlanMetadata } from "./planning-center/sermon-plan.js";
 import { processSermon } from "./process/process-sermon.js";
 
 interface ProcessCommandOptions {
@@ -16,8 +19,48 @@ interface ProcessCommandOptions {
   title?: string;
 }
 
+interface PlanMetadataCommandOptions {
+  date: string;
+  json: boolean;
+  planId?: string;
+  serviceType?: string;
+}
+
 const program = new Command();
 program.name("sermon").description("Clean and master AIFF sermon recordings").version("0.1.0");
+
+program
+  .command("plan-metadata")
+  .description("Read sermon metadata from a Planning Center Services plan")
+  .requiredOption("--date <yyyy-mm-dd>", "service-plan date")
+  .option("--service-type <id>", "Planning Center Service Type ID")
+  .option("--plan-id <id>", "Planning Center Plan ID; useful when a date is ambiguous")
+  .option("--json", "print machine-readable JSON", false)
+  .action(async (options: PlanMetadataCommandOptions) => {
+    const config = await loadPlanningCenterConfig();
+    const serviceTypeId = options.serviceType ?? config.defaultServiceTypeId;
+    if (!serviceTypeId) {
+      throw new Error("Pass --service-type or configure PLANNING_CENTER_DEFAULT_SERVICE_TYPE_ID");
+    }
+    const metadata = await readSermonPlanMetadata(new PlanningCenterClient(config), {
+      date: options.date,
+      planId: options.planId,
+      serviceTypeId,
+    });
+    if (options.json) {
+      console.log(JSON.stringify(metadata, null, 2));
+      return;
+    }
+    console.log(`Planning Center Plan: ${metadata.planId}`);
+    if (metadata.planUrl) console.log(`Plan URL: ${metadata.planUrl}`);
+    console.log(`Date: ${metadata.date}`);
+    console.log(`Preacher: ${metadata.preacher ?? "(not found)"}`);
+    console.log(`Series: ${metadata.sermonSeries ?? "(not found)"}`);
+    console.log(`Scripture: ${metadata.scripture ?? "(not found)"}`);
+    console.log(`Title: ${metadata.title ?? "(not found)"}`);
+    console.log(`Artwork: ${metadata.artwork?.url ?? "(not found)"}`);
+    for (const warning of metadata.warnings) console.warn(`Warning: ${warning}`);
+  });
 
 program
   .command("process")
