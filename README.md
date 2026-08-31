@@ -30,7 +30,7 @@ On macOS, install FFmpeg with `brew install ffmpeg`.
 ```sh
 pnpm install
 pnpm check
-pnpm dev process sermon.aiff \
+pnpm process sermon.aiff \
   --preacher "John Smith" \
   --series "Sermon on the Mount" \
   --date 2026-08-23 \
@@ -44,19 +44,12 @@ The read-only Planning Center lookup can infer the date, preacher, sermon
 series, scripture, title, and Series artwork from a Services plan:
 
 ```sh
-pnpm dev plan-metadata --date 2026-08-30
-pnpm dev plan-metadata --date 2026-08-30 --json
+pnpm plan-metadata --date 2026-08-30
+pnpm plan-metadata --date 2026-08-30 --json
 ```
 
-Add Personal Access Token credentials and a default Services Service Type to
-`.env.local`:
-
-```dotenv
-PLANNING_CENTER_CLIENT_ID=
-PLANNING_CENTER_SECRET=
-PLANNING_CENTER_USER_AGENT="Sermon Processor (your-email@example.com)"
-PLANNING_CENTER_DEFAULT_SERVICE_TYPE_ID=
-```
+Configure the Personal Access Token credentials documented in `.env`. A
+default Services Service Type is optional.
 
 Pass `--service-type <id>` to override the configured Service Type. If more
 than one plan exists on a date, pass `--plan-id <id>`. The command only makes
@@ -69,26 +62,11 @@ local path to `process` with `--artwork`.
 
 ## Output configuration
 
-`.env` is the committed configuration template:
+`.env` is the checked-in configuration template and documents every supported
+variable. Copy it to the gitignored `.env.local`, then fill in local values:
 
-```dotenv
-SERMON_ORGANIZATION=
-SERMON_OUTPUT_DIRECTORY=
-SERMON_FILENAME_FORMAT=
-
-PLANNING_CENTER_CLIENT_ID=
-PLANNING_CENTER_SECRET=
-PLANNING_CENTER_USER_AGENT=
-# PLANNING_CENTER_DEFAULT_SERVICE_TYPE_ID=
-```
-
-Copy those variables into the gitignored `.env.local` and fill in the values
-for your environment:
-
-```dotenv
-SERMON_ORGANIZATION=Example Organization
-SERMON_OUTPUT_DIRECTORY=~/Downloads
-SERMON_FILENAME_FORMAT=SERMON-YYYY-MM-DD-LAST
+```sh
+cp .env .env.local
 ```
 
 Runtime environment variables override `.env.local`, which overrides `.env`.

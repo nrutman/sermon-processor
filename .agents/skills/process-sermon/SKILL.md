@@ -12,7 +12,7 @@ Obtain the AIFF path and ISO sermon date. When Planning Center configuration is
 available, first run:
 
 ```sh
-pnpm dev plan-metadata --date <yyyy-mm-dd> --json
+pnpm plan-metadata --date <yyyy-mm-dd> --json
 ```
 
 Present the inferred preacher, sermon series, scripture reference, title, and
@@ -43,7 +43,7 @@ If FFmpeg is unavailable on macOS, ask before running `brew install ffmpeg`.
 ## Process
 
 ```sh
-pnpm dev process <input.aiff> \
+pnpm process <input.aiff> \
   --preacher "<preacher>" \
   --series "<series>" \
   --date <yyyy-mm-dd> \
