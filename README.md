@@ -84,6 +84,37 @@ output directory is created when it does not already exist.
 QC reports are written to the gitignored `.sermon-qc/` directory in the project
 root, using the MP3 filename with a `.qc.json` suffix.
 
+## WordPress publishing
+
+Install the REST-enabled `prov-church` theme, then configure a WordPress
+Application Password and the required S3 media host in `.env.local`:
+
+```dotenv
+WORDPRESS_URL=https://provchurch.org
+WORDPRESS_USERNAME=
+WORDPRESS_APPLICATION_PASSWORD=
+WORDPRESS_MEDIA_HOST=provchurch-messages.s3.amazonaws.com
+```
+
+Upload a verified MP3 and create a draft sermon with:
+
+```sh
+pnpm publish-sermon ~/Downloads/PCOP-2026-09-06-Rutman.mp3 \
+  --qc .sermon-qc/PCOP-2026-09-06-Rutman.mp3.qc.json \
+  --preacher "Nathan Rutman" \
+  --series "Sermon on the Mount" \
+  --date 2026-09-06 \
+  --scripture "Matthew 7:24–29" \
+  --title "Hearers and Doers"
+```
+
+The publisher refuses duplicate sermon dates, sets the post time to noon,
+matches close speaker and Series names, reuses the featured image from the
+matched Series, and reads the post back for verification. It deletes the
+uploaded media and refuses to create a sermon unless WordPress returns an HTTPS
+URL on `WORDPRESS_MEDIA_HOST`. Add `--publish` only when the sermon should be
+made public immediately.
+
 Dependencies must be at least three days old. This is enforced by
 `minimumReleaseAge: 4320` in `pnpm-workspace.yaml`.
 
