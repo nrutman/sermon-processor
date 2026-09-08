@@ -144,4 +144,25 @@ describe("WordPressClient", () => {
     expect(body.toString("utf8")).toContain("audio-data");
     expect(requestOptions.headers?.["Content-Length"]).toBe(body.length);
   });
+
+  it("reports media upload connection failures", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-client-test-"));
+    const path = join(directory, "sermon.mp3");
+    await writeFile(path, "audio-data");
+    httpsRequestMock.mockImplementation(() => {
+      const request = new PassThrough();
+      queueMicrotask(() => request.emit("error", new Error("socket closed")));
+      return request;
+    });
+    const client = new WordPressClient({
+      applicationPassword: "app-password",
+      mediaHost: "provchurch-messages.s3.amazonaws.com",
+      siteUrl: "https://provchurch.org",
+      username: "nathan",
+    });
+
+    await expect(client.uploadMedia(path)).rejects.toThrow(
+      "WordPress media upload failed: socket closed",
+    );
+  });
 });
