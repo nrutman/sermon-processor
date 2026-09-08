@@ -1,12 +1,37 @@
-import { access, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { processRequestSchema } from "../../config/schema.js";
 import { processSermon } from "../process-sermon.js";
 import type { CommandRunner } from "../run-command.js";
 
 describe("processSermon failure handling", () => {
+  it("refuses to replace an existing output without explicit approval", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "process-sermon-test-"));
+    const output = join(directory, "sermon.mp3");
+    await writeFile(output, "existing output");
+    const runner = { run: vi.fn<CommandRunner["run"]>() };
+    const request = processRequestSchema.parse({
+      artwork: join(directory, "artwork.png"),
+      input: join(directory, "sermon.aiff"),
+      output,
+      metadata: {
+        organization: "Example Organization",
+        preacher: "Test Preacher",
+        sermonSeries: "Test Series",
+        date: "2026-08-23",
+        scripture: "Matthew 7:7–12",
+      },
+    });
+
+    await expect(processSermon(request, runner)).rejects.toThrow(
+      `Output already exists: ${output}`,
+    );
+    await expect(readFile(output, "utf8")).resolves.toBe("existing output");
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
   it("preserves and reports its work directory when processing fails", async () => {
     const runner: CommandRunner = {
       async run(command, arguments_) {

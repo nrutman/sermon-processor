@@ -1,12 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import {
   classifyHandlingNoise,
   parseSpectralFrames,
+  removeHandlingNoise,
   type SpectralFrame,
 } from "../handling-noise.js";
 import { processingOptionsSchema } from "../../config/schema.js";
+import type { AudioRuntime } from "../runtime.js";
+import type { CommandRunner } from "../../process/run-command.js";
 
 const options = processingOptionsSchema.parse({}).handlingNoise;
+const runtime: AudioRuntime = {
+  ffmpegPath: "ffmpeg",
+  ffprobePath: "ffprobe",
+  ffmpegVersion: "test",
+  ffprobeVersion: "test",
+};
 
 function frame(
   timeSeconds: number,
@@ -77,5 +89,55 @@ describe("handling-noise detection", () => {
     expect(parseSpectralFrames(output)).toEqual([
       { timeSeconds: 0, rmsDb: -18.5, centroidHz: 4200.25, flatness: 0.91 },
     ]);
+  });
+
+  it("copies the input unchanged when handling-noise removal is disabled", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "handling-noise-test-"));
+    const input = join(directory, "input.wav");
+    const output = join(directory, "output.wav");
+    await writeFile(input, "lossless audio fixture");
+    const runner = { run: vi.fn<CommandRunner["run"]>() };
+
+    const events = await removeHandlingNoise(
+      input,
+      input,
+      output,
+      10,
+      -50,
+      { ...options, enabled: false },
+      [],
+      runtime,
+      runner,
+    );
+
+    expect(events).toEqual([]);
+    await expect(readFile(output, "utf8")).resolves.toBe("lossless audio fixture");
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("copies the input unchanged when analysis finds no removable events", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "handling-noise-test-"));
+    const input = join(directory, "input.wav");
+    const output = join(directory, "output.wav");
+    await writeFile(input, "lossless audio fixture");
+    const runner = {
+      run: vi.fn<CommandRunner["run"]>().mockResolvedValue({ stderr: "", stdout: "" }),
+    };
+
+    const events = await removeHandlingNoise(
+      input,
+      input,
+      output,
+      10,
+      -50,
+      options,
+      [],
+      runtime,
+      runner,
+    );
+
+    expect(events).toEqual([]);
+    await expect(readFile(output, "utf8")).resolves.toBe("lossless audio fixture");
+    expect(runner.run).toHaveBeenCalledTimes(1);
   });
 });

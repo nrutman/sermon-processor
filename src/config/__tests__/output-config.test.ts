@@ -24,10 +24,10 @@ describe("output configuration", () => {
         outputDirectory: "~/Downloads",
         filenameFormat: "SERMON-YYYY-MM-DD-LAST",
       }),
-      { date: "2026-08-23", preacher: "Rob Ivy" },
+      { date: "2026-08-23", preacher: "Rob Parker" },
     );
 
-    expect(output).toBe(join(homedir(), "Downloads", "SERMON-2026-08-23-Ivy.mp3"));
+    expect(output).toBe(join(homedir(), "Downloads", "SERMON-2026-08-23-Parker.mp3"));
   });
 
   it("lets .env.local override the committed .env template", async () => {
