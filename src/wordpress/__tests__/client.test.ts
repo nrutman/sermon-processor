@@ -31,19 +31,19 @@ describe("WordPressClient", () => {
     vi.stubGlobal("fetch", fetchMock);
     const client = new WordPressClient({
       applicationPassword: "app-password",
-      mediaHost: "provchurch-messages.s3.amazonaws.com",
-      siteUrl: "https://provchurch.org",
-      username: "nathan",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
     });
 
     await client.get("sermon-series?slug=sermon-on-the-mount");
 
     const request = fetchMock.mock.calls[0];
     expect(request?.[0]).toBe(
-      "https://provchurch.org/wp-json/wp/v2/sermon-series?slug=sermon-on-the-mount",
+      "https://church.example.org/wp-json/wp/v2/sermon-series?slug=sermon-on-the-mount",
     );
     expect(new Headers(request?.[1]?.headers).get("Authorization")).toBe(
-      `Basic ${Buffer.from("nathan:app-password").toString("base64")}`,
+      `Basic ${Buffer.from("publisher:app-password").toString("base64")}`,
     );
   });
 
@@ -56,9 +56,9 @@ describe("WordPressClient", () => {
     );
     const client = new WordPressClient({
       applicationPassword: "app-password",
-      mediaHost: "provchurch-messages.s3.amazonaws.com",
-      siteUrl: "https://provchurch.org",
-      username: "nathan",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
     });
 
     await expect(client.get("sermons")).rejects.toThrow(
@@ -70,7 +70,7 @@ describe("WordPressClient", () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: 23665 }), {
+        new Response(JSON.stringify({ id: 40 }), {
           headers: { "Content-Type": "application/json" },
         }),
       )
@@ -78,15 +78,15 @@ describe("WordPressClient", () => {
     vi.stubGlobal("fetch", fetchMock);
     const client = new WordPressClient({
       applicationPassword: "app-password",
-      mediaHost: "provchurch-messages.s3.amazonaws.com",
-      siteUrl: "https://provchurch.org",
-      username: "nathan",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
     });
 
-    await expect(client.post("sermons/23665", { status: "publish" })).resolves.toEqual({
-      id: 23665,
+    await expect(client.post("sermons/40", { status: "publish" })).resolves.toEqual({
+      id: 40,
     });
-    await expect(client.delete("media/25000?force=true")).resolves.toBeUndefined();
+    await expect(client.delete("media/50?force=true")).resolves.toBeUndefined();
 
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("DELETE");
@@ -115,9 +115,8 @@ describe("WordPressClient", () => {
           request.emit("response", response);
           response.end(
             JSON.stringify({
-              id: 25000,
-              source_url:
-                "https://provchurch-messages.s3.amazonaws.com/wp-content/uploads/sermon.mp3",
+              id: 50,
+              source_url: "https://media.example.org/wp-content/uploads/sermon.mp3",
             }),
           );
         });
@@ -126,14 +125,14 @@ describe("WordPressClient", () => {
     });
     const client = new WordPressClient({
       applicationPassword: "app-password",
-      mediaHost: "provchurch-messages.s3.amazonaws.com",
-      siteUrl: "https://provchurch.org",
-      username: "nathan",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
     });
 
-    await expect(client.uploadMedia(path)).resolves.toMatchObject({ id: 25000 });
+    await expect(client.uploadMedia(path)).resolves.toMatchObject({ id: 50 });
 
-    expect(requestUrl).toBe("https://provchurch.org/wp-json/wp/v2/media");
+    expect(requestUrl).toBe("https://church.example.org/wp-json/wp/v2/media");
     expect(requestOptions.method).toBe("POST");
     expect(requestOptions.headers?.["Content-Type"]).toMatch(
       /^multipart\/form-data; boundary=sermon-processor-/,
@@ -156,9 +155,9 @@ describe("WordPressClient", () => {
     });
     const client = new WordPressClient({
       applicationPassword: "app-password",
-      mediaHost: "provchurch-messages.s3.amazonaws.com",
-      siteUrl: "https://provchurch.org",
-      username: "nathan",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
     });
 
     await expect(client.uploadMedia(path)).rejects.toThrow(

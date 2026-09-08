@@ -24,7 +24,7 @@ describe("plan-metadata command", () => {
                 attributes: {
                   planning_center_url: "https://example.com/plan-1",
                   sort_date: "2026-08-30T09:30:00Z",
-                  title: "Root and Fruit",
+                  title: "Sample Sermon",
                 },
                 relationships: { series: { data: { id: "series-1", type: "Series" } } },
               },
@@ -74,7 +74,7 @@ describe("plan-metadata command", () => {
                 id: "preacher",
                 type: "PlanPerson",
                 attributes: {
-                  name: "Robert Ivy",
+                  name: "Robert Parker",
                   status: "confirmed",
                   team_position_name: "Preacher",
                 },
@@ -96,10 +96,10 @@ describe("plan-metadata command", () => {
     expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject({
       artwork: { contentType: "image/png", url: "https://example.com/art.png" },
       date: "2026-08-30",
-      preacher: "Robert Ivy",
+      preacher: "Robert Parker",
       scripture: "Matthew 7:13–23",
       sermonSeries: "Sermon on the Mount",
-      title: "Root and Fruit",
+      title: "Sample Sermon",
       warnings: [],
     });
     expect(fetchMock).toHaveBeenCalledTimes(4);

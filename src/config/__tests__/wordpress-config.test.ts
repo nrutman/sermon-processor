@@ -8,16 +8,16 @@ describe("loadWordPressConfig", () => {
         directory: "/missing",
         environment: {
           WORDPRESS_APPLICATION_PASSWORD: "app password",
-          WORDPRESS_MEDIA_HOST: "PROVCHURCH-MESSAGES.S3.AMAZONAWS.COM",
-          WORDPRESS_URL: "https://provchurch.org/",
-          WORDPRESS_USERNAME: "nathan",
+          WORDPRESS_MEDIA_HOST: "MEDIA.EXAMPLE.ORG",
+          WORDPRESS_URL: "https://church.example.org/",
+          WORDPRESS_USERNAME: "publisher",
         },
       }),
     ).resolves.toEqual({
       applicationPassword: "app password",
-      mediaHost: "provchurch-messages.s3.amazonaws.com",
-      siteUrl: "https://provchurch.org",
-      username: "nathan",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
     });
   });
 
@@ -27,9 +27,9 @@ describe("loadWordPressConfig", () => {
         directory: "/missing",
         environment: {
           WORDPRESS_APPLICATION_PASSWORD: "app password",
-          WORDPRESS_MEDIA_HOST: "provchurch-messages.s3.amazonaws.com",
-          WORDPRESS_URL: "http://provchurch.org",
-          WORDPRESS_USERNAME: "nathan",
+          WORDPRESS_MEDIA_HOST: "media.example.org",
+          WORDPRESS_URL: "http://church.example.org",
+          WORDPRESS_USERNAME: "publisher",
         },
       }),
     ).rejects.toThrow("WordPress URL must use HTTPS");

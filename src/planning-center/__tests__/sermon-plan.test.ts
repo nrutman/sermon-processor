@@ -38,7 +38,7 @@ function api(overrides: Partial<PlanningCenterReadApi> = {}): PlanningCenterRead
           title: "Scripture Reading",
         }),
         resource("Item", "sermon", {
-          description: "Root and Fruit",
+          description: "Sample Sermon",
           item_type: "item",
           sequence: 15,
           title: "Sermon",
@@ -55,7 +55,7 @@ function api(overrides: Partial<PlanningCenterReadApi> = {}): PlanningCenterRead
     listPlanPeople: vi.fn<PlanningCenterReadApi["listPlanPeople"]>().mockResolvedValue({
       data: [
         resource("PlanPerson", "person-1", {
-          name: "Robert Ivy",
+          name: "Robert Parker",
           status: "confirmed",
           team_position_name: "Preacher",
         }),
@@ -93,10 +93,10 @@ describe("readSermonPlanMetadata", () => {
       date: "2026-08-30",
       planId: "plan-1",
       planUrl: "https://services.planningcenteronline.com/plans/plan-1",
-      preacher: "Robert Ivy",
+      preacher: "Robert Parker",
       scripture: "Matthew 7:13–23",
       sermonSeries: "Sermon on the Mount",
-      title: "Root and Fruit",
+      title: "Sample Sermon",
       warnings: [],
     });
   });

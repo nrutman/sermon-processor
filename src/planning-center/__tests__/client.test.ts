@@ -20,7 +20,7 @@ describe("PlanningCenterClient", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            data: [{ id: "plan-2", type: "Plan", attributes: { sort_date: "2026-09-06" } }],
+            data: [{ id: "plan-2", type: "Plan", attributes: { sort_date: "2026-01-04" } }],
             links: { next: null },
           }),
         ),

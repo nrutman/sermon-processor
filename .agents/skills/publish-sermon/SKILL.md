@@ -1,7 +1,7 @@
 ---
 name: publish-sermon
 description: Uploads a verified sermon MP3 to WordPress, creates a complete draft, and publishes it only after explicit approval.
-compatibility: Requires Node.js 22+, pnpm 11, the REST-enabled prov-church theme, and WordPress Application Password configuration.
+compatibility: Requires Node.js 22+, pnpm 11, WordPress sermon REST resources, and Application Password configuration.
 ---
 
 # Publish a sermon to WordPress
@@ -19,7 +19,7 @@ Before any mutation, present the intended WordPress payload, including:
 - Preacher and matched WordPress speaker
 - Matched WordPress Series and artwork attachment
 - Sermon date at exactly `12:00:00` Eastern local time
-- Expected S3 host from `WORDPRESS_MEDIA_HOST`
+- Expected offloaded media host from `WORDPRESS_MEDIA_HOST`
 - Draft or published status
 
 Never print the WordPress username or Application Password. Credentials belong
@@ -52,8 +52,8 @@ pnpm publish-sermon <sermon.mp3> \
 ```
 
 Do not add `--publish` unless the user explicitly requests immediate public
-publication. The client uses multipart HTTP/1.1 for media uploads because the
-site's ModSecurity configuration rejects raw REST uploads.
+publication. The client uses multipart HTTP/1.1 for compatibility with hosts
+that reject raw REST uploads or HTTP/2 upload streams.
 
 The publisher must refuse the operation and delete the attachment when
 WordPress does not return an HTTPS media URL whose hostname exactly matches
@@ -74,13 +74,13 @@ Read the draft and attachment back through authenticated REST requests. Verify:
 - Featured media is the existing Series artwork
 - Audio metadata equals the uploaded attachment's `source_url`
 - Attachment is associated with the sermon post
-- S3 audio URL returns HTTP 200
-- Equivalent `provchurch.org/wp-content/uploads/...` URL returns HTTP 404
+- Offloaded audio URL returns HTTP 200
+- Equivalent local path under `WORDPRESS_URL` returns HTTP 404
 
 Provide the WordPress edit link for review:
 
 ```text
-https://provchurch.org/wp-admin/post.php?post=<post-id>&action=edit
+<WORDPRESS_URL>/wp-admin/post.php?post=<post-id>&action=edit
 ```
 
 ## Publish only after approval
@@ -91,7 +91,7 @@ authenticated REST request. Resending the date prevents WordPress from
 substituting the current publication time.
 
 Verify the resulting status, local date, public permalink, rendered title, and
-S3 audio URL. The public page and S3 object must return HTTP 200 while the
-equivalent local upload path remains unavailable.
+offloaded audio URL. The public page and media object must return HTTP 200 while
+the equivalent local upload path remains unavailable.
 
 Do not repair unrelated historical sermon anomalies during publishing.
