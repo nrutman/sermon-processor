@@ -66,6 +66,32 @@ describe("WordPressClient", () => {
     );
   });
 
+  it("sends JSON updates and deletes through the authenticated REST client", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 23665 }), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new WordPressClient({
+      applicationPassword: "app-password",
+      mediaHost: "provchurch-messages.s3.amazonaws.com",
+      siteUrl: "https://provchurch.org",
+      username: "nathan",
+    });
+
+    await expect(client.post("sermons/23665", { status: "publish" })).resolves.toEqual({
+      id: 23665,
+    });
+    await expect(client.delete("media/25000?force=true")).resolves.toBeUndefined();
+
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("DELETE");
+  });
+
   it("streams media as a browser-compatible multipart upload", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordpress-client-test-"));
     const path = join(directory, "sermon.mp3");

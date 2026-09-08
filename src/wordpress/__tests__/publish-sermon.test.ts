@@ -192,6 +192,30 @@ describe("WordPress sermon publishing", () => {
     expect(api.delete).toHaveBeenCalledWith("media/25000?force=true");
   });
 
+  it("preserves the publishing error when rollback cleanup also fails", async () => {
+    const api = createApi();
+    api.get.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path.startsWith("sermons?context=edit&status=any")) return [];
+      if (path.startsWith("sermon-speakers?")) return [];
+      if (path.startsWith("sermon-series?context=edit&hide_empty=")) {
+        return [{ id: 108, name: "Sermon on the Mount", slug: "sermon-on-the-mount" }];
+      }
+      if (path.startsWith("sermons?context=edit&sermon-series=108")) {
+        return [sermon({ id: 23659 })];
+      }
+      if (path === "sermons/24000?context=edit") {
+        return sermon({ meta: { _ct_sm_audio_file: "https://example.com/wrong.mp3" } });
+      }
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    api.delete.mockRejectedValue(new Error("cleanup unavailable"));
+
+    await expect(publishSermon(request, api)).rejects.toThrow(
+      "WordPress did not preserve the verified media fields",
+    );
+    expect(api.delete).toHaveBeenCalledTimes(2);
+  });
+
   it("parses a same-chapter scripture range", () => {
     expect(buildScriptureMeta("Matthew 7:24–29")).toMatchObject({
       _ct_sm_bible01_book: "Matthew",
@@ -210,6 +234,9 @@ describe("WordPress sermon publishing", () => {
     expect(publishSermonInternals.personNamesMatch("Robert Ivy", "Rob Ivy")).toBe(true);
     expect(publishSermonInternals.personNamesMatch("Matthew Bartko", "Matt Bartko")).toBe(true);
     expect(publishSermonInternals.personNamesMatch("Nathan Rutman", "Rob Ivy")).toBe(false);
+    expect(
+      publishSermonInternals.similarity("Sermon on the Mount", "The Sermon on the Mount"),
+    ).toBe(1);
   });
 
   it("preserves verse suffixes", () => {
