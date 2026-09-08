@@ -18,12 +18,17 @@ const mediaSchema = z.object({
   id: z.number().int().positive(),
   source_url: z.url(),
 });
+const associatedMediaSchema = mediaSchema.extend({
+  post: z.number().int().nonnegative(),
+});
 const sermonSchema = z.object({
   date: z.string(),
   featured_media: z.number().int().nonnegative(),
   id: z.number().int().positive(),
   link: z.url(),
   meta: z.record(z.string(), z.unknown()).default({}),
+  [speakerRestBase]: z.array(z.number().int().positive()).default([]),
+  [seriesRestBase]: z.array(z.number().int().positive()).default([]),
   status: z.string(),
   title: z.object({ raw: z.string().optional(), rendered: z.string().optional() }),
 });
@@ -206,6 +211,39 @@ async function verifyQcReport(request: PublishSermonRequest): Promise<number> {
   return qc.output.durationSeconds;
 }
 
+function verifySermonReadback(
+  sermon: z.infer<typeof sermonSchema>,
+  expected: {
+    date: string;
+    featuredMedia: number;
+    meta: Record<string, string>;
+    seriesId: number;
+    speakerId: number;
+    status: string;
+    title: string;
+  },
+): void {
+  const mismatches: string[] = [];
+  if (sermon.status !== expected.status) mismatches.push("status");
+  if (sermon.date !== expected.date) mismatches.push("date");
+  if ((sermon.title.raw ?? sermon.title.rendered) !== expected.title) mismatches.push("title");
+  if (sermon.featured_media !== expected.featuredMedia) mismatches.push("featured media");
+  if (sermon[speakerRestBase].length !== 1 || sermon[speakerRestBase][0] !== expected.speakerId) {
+    mismatches.push("speaker");
+  }
+  if (sermon[seriesRestBase].length !== 1 || sermon[seriesRestBase][0] !== expected.seriesId) {
+    mismatches.push("Series");
+  }
+  if (Object.entries(expected.meta).some(([key, value]) => sermon.meta[key] !== value)) {
+    mismatches.push("sermon metadata");
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `WordPress did not preserve the verified sermon fields on post ${sermon.id}: ${mismatches.join(", ")}`,
+    );
+  }
+}
+
 export async function publishSermon(
   request: PublishSermonRequest,
   api: WordPressApi,
@@ -265,11 +303,14 @@ export async function publishSermon(
       _ct_sm_audio_button_text: "Download Audio",
       ...buildScriptureMeta(request.metadata.scripture),
     };
+    const title = request.metadata.title ?? request.metadata.scripture;
+    const status = request.publish ? "publish" : "draft";
+    const date = `${request.metadata.date}T12:00:00`;
     const created = sermonSchema.parse(
       await api.post("sermons", {
-        title: request.metadata.title ?? request.metadata.scripture,
-        status: request.publish ? "publish" : "draft",
-        date: `${request.metadata.date}T12:00:00`,
+        title,
+        status,
+        date,
         featured_media: featuredMedia,
         meta,
         [speakerRestBase]: [speaker.id],
@@ -279,11 +320,20 @@ export async function publishSermon(
     createdPostId = created.id;
     await api.post(`media/${uploaded.id}`, { post: created.id });
     const verified = sermonSchema.parse(await api.get(`sermons/${created.id}?context=edit`));
-    if (
-      verified.featured_media !== featuredMedia ||
-      verified.meta["_ct_sm_audio_file"] !== uploaded.source_url
-    ) {
-      throw new Error(`WordPress did not preserve the verified media fields on post ${created.id}`);
+    verifySermonReadback(verified, {
+      date,
+      featuredMedia,
+      meta,
+      seriesId: series.id,
+      speakerId: speaker.id,
+      status,
+      title,
+    });
+    const verifiedMedia = associatedMediaSchema.parse(
+      await api.get(`media/${uploaded.id}?context=edit`),
+    );
+    if (verifiedMedia.post !== created.id || verifiedMedia.source_url !== uploaded.source_url) {
+      throw new Error(`WordPress did not associate media ${uploaded.id} with post ${created.id}`);
     }
     return {
       mediaId: uploaded.id,

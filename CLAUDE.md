@@ -59,3 +59,18 @@ Generated fixtures must cover clean speech, differing levels, room tone,
 silences around the one-second boundary, handling noise, plosives, and Unicode
 metadata. Any detector change must show that it removes the known handling-noise
 fixture without removing the speech-like negative fixture.
+
+Whenever tests are added or changed, review the whole affected test surface and
+answer these questions:
+
+1. Are any high-value cases missing, especially safety guards, boundary
+   conditions, error paths, and observable fallback behavior?
+2. Can the tests be consolidated or simplified without adding conditional logic
+   to test bodies or obscuring descriptive case names?
+3. Can any low-value tests be removed because they are tautological,
+   implementation-coupled, or redundant with stronger behavioral coverage?
+
+Use coverage reports to find untested behavior, not as a reason to test trivial
+callbacks, thin wrappers, or unreachable post-validation guards. Prefer tests
+that protect audio integrity, publication safety, rollback behavior, and stable
+external-service contracts.

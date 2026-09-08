@@ -16,6 +16,13 @@ vi.mock("node:https", () => ({ request: httpsRequestMock }));
 
 import { WordPressClient } from "../client.js";
 
+const wordpressConfig = {
+  applicationPassword: "app-password",
+  mediaHost: "media.example.org",
+  siteUrl: "https://church.example.org",
+  username: "publisher",
+};
+
 afterEach(() => {
   httpsRequestMock.mockReset();
   vi.unstubAllGlobals();
@@ -29,12 +36,7 @@ describe("WordPressClient", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const client = new WordPressClient({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
+    const client = new WordPressClient(wordpressConfig);
 
     await client.get("sermon-series?slug=sermon-on-the-mount");
 
@@ -54,12 +56,7 @@ describe("WordPressClient", () => {
         .fn<typeof fetch>()
         .mockResolvedValue(new Response('{"message":"not allowed"}', { status: 403 })),
     );
-    const client = new WordPressClient({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
+    const client = new WordPressClient(wordpressConfig);
 
     await expect(client.get("sermons")).rejects.toThrow(
       'WordPress request failed (403 ): {"message":"not allowed"}',
@@ -76,12 +73,7 @@ describe("WordPressClient", () => {
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
-    const client = new WordPressClient({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
+    const client = new WordPressClient(wordpressConfig);
 
     await expect(client.post("sermons/40", { status: "publish" })).resolves.toEqual({
       id: 40,
@@ -123,12 +115,7 @@ describe("WordPressClient", () => {
       });
       return request;
     });
-    const client = new WordPressClient({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
+    const client = new WordPressClient(wordpressConfig);
 
     await expect(client.uploadMedia(path)).resolves.toMatchObject({ id: 50 });
 
@@ -153,12 +140,7 @@ describe("WordPressClient", () => {
       queueMicrotask(() => request.emit("error", new Error("socket closed")));
       return request;
     });
-    const client = new WordPressClient({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
+    const client = new WordPressClient(wordpressConfig);
 
     await expect(client.uploadMedia(path)).rejects.toThrow(
       "WordPress media upload failed: socket closed",

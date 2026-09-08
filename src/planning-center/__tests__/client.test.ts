@@ -63,4 +63,29 @@ describe("PlanningCenterClient", () => {
       "Planning Center request failed (403 Forbidden): permission denied",
     );
   });
+
+  it("loads one explicit plan with its included Series", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { id: "plan-1", type: "Plan", attributes: { sort_date: "2026-08-30" } },
+          included: [{ id: "series-1", type: "Series", attributes: { title: "Example Series" } }],
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new PlanningCenterClient({
+      clientId: "client",
+      secret: "secret",
+      userAgent: "Sermon Processor (test@example.com)",
+    });
+
+    const result = await client.getPlan("service-1", "plan-1");
+
+    expect(result.data[0]?.id).toBe("plan-1");
+    expect(result.included[0]?.id).toBe("series-1");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(
+      "/service_types/service-1/plans/plan-1?include=series",
+    );
+  });
 });

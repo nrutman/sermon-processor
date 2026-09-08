@@ -150,6 +150,43 @@ describe("readSermonPlanMetadata", () => {
     ).rejects.toThrow("Multiple Planning Center plans exist");
   });
 
+  it("uses an explicit Plan ID instead of listing plans by date", async () => {
+    const explicitPlanApi = api();
+    const getPlan = vi.spyOn(explicitPlanApi, "getPlan");
+    const listPlans = vi.spyOn(explicitPlanApi, "listPlans");
+
+    await readSermonPlanMetadata(explicitPlanApi, {
+      date: "2026-08-30",
+      planId: "plan-1",
+      serviceTypeId: "service-1",
+    });
+
+    expect(getPlan).toHaveBeenCalledWith("service-1", "plan-1");
+    expect(listPlans).not.toHaveBeenCalled();
+  });
+
+  it("rejects an explicit Plan ID scheduled on another date", async () => {
+    const wrongDateApi = api();
+    wrongDateApi.getPlan = vi.fn<PlanningCenterReadApi["getPlan"]>().mockResolvedValue({
+      data: [
+        resource("Plan", "plan-1", {
+          sort_date: "2026-08-31T09:30:00Z",
+        }),
+      ],
+      included: [],
+    });
+    const listPlanItems = vi.spyOn(wrongDateApi, "listPlanItems");
+
+    await expect(
+      readSermonPlanMetadata(wrongDateApi, {
+        date: "2026-08-30",
+        planId: "plan-1",
+        serviceTypeId: "service-1",
+      }),
+    ).rejects.toThrow("Planning Center Plan plan-1 is not scheduled on 2026-08-30");
+    expect(listPlanItems).not.toHaveBeenCalled();
+  });
+
   it("reports multiple scheduled preachers instead of selecting one", async () => {
     const multiplePreacherApi = api({
       listPlanPeople: vi.fn<PlanningCenterReadApi["listPlanPeople"]>().mockResolvedValue({
