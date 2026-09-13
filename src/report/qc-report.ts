@@ -14,6 +14,11 @@ export interface HandlingNoiseEvent {
   startSeconds: number;
 }
 
+export interface ProcessingStageTiming {
+  durationSeconds: number;
+  stage: string;
+}
+
 export interface QcReport {
   createdAt: string;
   handlingNoise: HandlingNoiseEvent[];
@@ -34,7 +39,12 @@ export interface QcReport {
     };
   };
   output: VerifiedMp3Output & { path: string };
+  processing: {
+    encodingAttempts: number;
+    stages: ProcessingStageTiming[];
+    totalDurationSeconds: number;
+  };
   runtime: AudioRuntime;
-  schemaVersion: 2;
+  schemaVersion: 3;
   warnings: string[];
 }

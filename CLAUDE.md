@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository contains a TypeScript CLI that cleans and masters AIFF sermon
+This repository contains a TypeScript CLI that cleans and masters AIFF or PCM WAV sermon
 recordings. TypeScript orchestrates established audio tools; FFmpeg performs the
 DSP. Do not reimplement codecs, filters, FFTs, resampling, or loudness algorithms
 in application code when a maintained third-party tool already provides them.

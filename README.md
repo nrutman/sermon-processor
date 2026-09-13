@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/nrutman/sermon-processor/actions/workflows/ci.yml/badge.svg)](https://github.com/nrutman/sermon-processor/actions/workflows/ci.yml)
 
-A TypeScript CLI that turns AIFF sermon recordings into cleaned, leveled,
+A TypeScript CLI that turns AIFF or PCM WAV sermon recordings into cleaned, leveled,
 speech-optimized 64 kbps MP3 files. FFmpeg performs the audio processing; the
 TypeScript application analyzes recordings, builds a reproducible filter plan,
 verifies output, and writes a QC report.
@@ -30,7 +30,7 @@ On macOS, install FFmpeg with `brew install ffmpeg`.
 ```sh
 pnpm install
 pnpm check
-pnpm process sermon.aiff \
+pnpm process sermon.wav \
   --preacher "John Smith" \
   --series "Sermon on the Mount" \
   --date 2026-08-23 \
@@ -82,7 +82,11 @@ Use `--output <path>` to override environment configuration for one run. The
 output directory is created when it does not already exist.
 
 QC reports are written to the gitignored `.sermon-qc/` directory in the project
-root, using the MP3 filename with a `.qc.json` suffix.
+root, using the MP3 filename with a `.qc.json` suffix. Processing prints each
+stage as it starts and finishes, and the report records per-stage timings. If
+MP3 encoding exceeds the true-peak ceiling, only normalization and encoding are
+retried with additional codec headroom when the measured loudness has room for
+the correction; the expensive source analysis and denoising stages are reused.
 
 ## WordPress publishing
 

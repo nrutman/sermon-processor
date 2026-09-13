@@ -1,6 +1,6 @@
 ---
 name: process-sermon
-description: Processes an AIFF sermon recording into a cleaned, leveled, 64 kbps MP3 and reviews its QC report. Use when preparing sermon audio for publication.
+description: Processes an AIFF or WAV sermon recording into a cleaned, leveled, 64 kbps MP3 and reviews its QC report. Use when preparing sermon audio for publication.
 compatibility: Requires Node.js 22+, pnpm 11, FFmpeg, and FFprobe.
 ---
 
@@ -8,7 +8,7 @@ compatibility: Requires Node.js 22+, pnpm 11, FFmpeg, and FFprobe.
 
 ## Gather metadata
 
-Obtain the AIFF path and ISO sermon date. When Planning Center configuration is
+Obtain the AIFF or WAV path and ISO sermon date. When Planning Center configuration is
 available, first run:
 
 ```sh
@@ -43,7 +43,7 @@ If FFmpeg is unavailable on macOS, ask before running `brew install ffmpeg`.
 ## Process
 
 ```sh
-pnpm process <input.aiff> \
+pnpm process <input.aiff-or-wav> \
   --preacher "<preacher>" \
   --series "<series>" \
   --date <yyyy-mm-dd> \
@@ -52,14 +52,17 @@ pnpm process <input.aiff> \
 ```
 
 Never add `--overwrite` without confirming that replacing the existing MP3 is
-intended. Never modify the AIFF source.
+intended. Never modify the source recording.
 
 Unless `--output` is supplied, use the output variables from `.env.local`.
 Never commit `.env.local`; `.env` documents the required variable names.
 
-The pipeline normalizes a lossless PCM master before encoding. It reserves 2.5
+The pipeline normalizes a lossless PCM master before encoding. It reserves 2.8
 dB of codec headroom below the configured final true-peak ceiling, verifies the
 PCM master, encodes the MP3 without additional DSP, and then verifies the MP3.
+If codec overshoot still exceeds the ceiling, it retries only normalization and
+encoding from the lossless premaster when the output has enough loudness margin
+for the additional measured headroom.
 Before level-changing processing, it selects a speech-free room-tone interval,
 captures a 15-band FFmpeg noise profile, and applies that profile across the
 recording. It then re-measures the denoised noise floor and derives a separate,

@@ -45,6 +45,11 @@ const qcReportSubsetSchema = z.object({
     profile: z.object({ bandNoiseDb: z.array(z.number()).length(15) }),
   }),
   output: z.object({ artworkBytes: z.number().positive(), artworkMimeType: z.string() }),
+  processing: z.object({
+    encodingAttempts: z.number().int().positive(),
+    stages: z.array(z.object({ durationSeconds: z.number().nonnegative(), stage: z.string() })),
+    totalDurationSeconds: z.number().positive(),
+  }),
 });
 
 describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
@@ -57,7 +62,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "sermon-integration-"));
     artwork = join(directory, "artwork.png");
-    input = join(directory, "fixture.aiff");
+    input = join(directory, "fixture.wav");
     output = join(directory, "fixture.mp3");
     speechHandlingInput = join(directory, "speech-handling.aiff");
     await execa("ffmpeg", [
@@ -91,7 +96,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
       "-map",
       "[out]",
       "-c:a",
-      "pcm_s16be",
+      "pcm_s16le",
       input,
     ]);
 
@@ -153,13 +158,21 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     expect(report.handlingNoise).toContainEqual(expect.objectContaining({ action: "removed" }));
     expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-17);
     expect(report.loudness.output.inputI).toBeLessThanOrEqual(-15);
-    expect(report.loudness.normalizationTruePeakTargetDbtp).toBe(-4);
+    expect(report.loudness.normalizationTruePeakTargetDbtp).toBe(-4.3);
     expect(report.loudness.normalizedPcm.inputTp).toBeLessThanOrEqual(-3.4);
     expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
     expect(report.metadata.comment).toBe(
       "Example Organization. Sunday, August 23, 2026. Matthew 7:7–12.",
     );
     expect(report.output.artworkMimeType).toBe("image/png");
+    expect(report.processing.encodingAttempts).toBe(1);
+    expect(report.processing.stages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: "Analyze source noise" }),
+        expect.objectContaining({ stage: "Detect speech" }),
+        expect.objectContaining({ stage: "Repair and denoise" }),
+      ]),
+    );
     expect(report.noise.afterDenoising.pauseThresholdDb).toBeGreaterThan(
       report.noise.afterDenoising.silenceThresholdDb,
     );

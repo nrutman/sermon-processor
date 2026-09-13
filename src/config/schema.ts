@@ -86,10 +86,10 @@ export type ProcessRequest = z.infer<typeof processRequestSchema>;
 export type ProcessingOptions = z.infer<typeof processingOptionsSchema>;
 export type SermonMetadata = z.infer<typeof sermonMetadataSchema>;
 
-export function assertAiffPath(path: string): void {
+export function assertAudioInputPath(path: string): void {
   const extension = extname(path).toLowerCase();
-  if (extension !== ".aiff" && extension !== ".aif") {
-    throw new Error(`Input must be an AIFF file; received ${extension || "no extension"}`);
+  if (![".aiff", ".aif", ".wav"].includes(extension)) {
+    throw new Error(`Input must be an AIFF or WAV file; received ${extension || "no extension"}`);
   }
 }
 

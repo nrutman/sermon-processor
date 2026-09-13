@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertAiffPath, assertArtworkPath, processRequestSchema } from "../schema.js";
+import { assertAudioInputPath, assertArtworkPath, processRequestSchema } from "../schema.js";
 
 describe("processRequestSchema", () => {
   it("applies conservative processing defaults", () => {
@@ -49,9 +49,16 @@ describe("processRequestSchema", () => {
   });
 
   it.each([
-    ["recording.wav", assertAiffPath, "Input must be an AIFF file"],
+    ["recording.mp4", assertAudioInputPath, "Input must be an AIFF or WAV file"],
     ["artwork.gif", assertArtworkPath, "Artwork must be a JPEG or PNG file"],
   ])("rejects an unsupported path for %s", (path, assertPath, message) => {
     expect(() => assertPath(path)).toThrow(message);
   });
+
+  it.each(["recording.aif", "recording.aiff", "recording.wav"])(
+    "accepts supported audio input %s",
+    (path) => {
+      expect(() => assertAudioInputPath(path)).not.toThrow();
+    },
+  );
 });

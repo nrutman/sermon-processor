@@ -3,7 +3,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import { processRequestSchema } from "../../config/schema.js";
-import { processSermon } from "../process-sermon.js";
+import {
+  processSermon,
+  processSermonInternals,
+  type ProcessingProgressReporter,
+} from "../process-sermon.js";
 import type { CommandRunner } from "../run-command.js";
 
 describe("processSermon failure handling", () => {
@@ -91,5 +95,57 @@ describe("processSermon failure handling", () => {
     expect(workDirectory).toBeDefined();
     await expect(access(workDirectory!)).resolves.toBeUndefined();
     await rm(workDirectory!, { recursive: true, force: true });
+  });
+});
+
+describe("adaptive MP3 codec headroom", () => {
+  it("retries from the premaster with measured overshoot and a safety margin", async () => {
+    const headroomByAttempt: number[] = [];
+    const progress = vi.fn<ProcessingProgressReporter>();
+
+    const encoded = await processSermonInternals.withAdaptiveCodecHeadroom(
+      async (headroomDb, attempt) => {
+        headroomByAttempt.push(headroomDb);
+        return {
+          outputLoudnessLufs: -16.5,
+          outputTruePeakDbtp: attempt === 1 ? -1.2 : -1.6,
+        };
+      },
+      -18,
+      -1.5,
+      progress,
+      { initialHeadroomDb: 2.8, maximumAttempts: 3, retrySafetyMarginDb: 0.2 },
+    );
+
+    expect(encoded).toMatchObject({
+      attempts: 2,
+      result: { outputLoudnessLufs: -16.5, outputTruePeakDbtp: -1.6 },
+    });
+    expect(headroomByAttempt).toEqual([2.8, 3.3]);
+    expect(progress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("retrying from the premaster with 3.30 dB headroom"),
+        stage: "Retry final encode",
+      }),
+    );
+  });
+
+  it("skips a retry that cannot preserve the loudness contract", async () => {
+    const progress = vi.fn<ProcessingProgressReporter>();
+    const encoded = await processSermonInternals.withAdaptiveCodecHeadroom(
+      async () => ({ outputLoudnessLufs: -17.8, outputTruePeakDbtp: -1.2 }),
+      -18,
+      -1.5,
+      progress,
+      { maximumAttempts: 2 },
+    );
+
+    expect(encoded).toMatchObject({ attempts: 1, result: { outputTruePeakDbtp: -1.2 } });
+    expect(progress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("would exceed the loudness contract"),
+        stage: "Skip final retry",
+      }),
+    );
   });
 });

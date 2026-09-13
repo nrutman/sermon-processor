@@ -27,7 +27,7 @@ export interface AudioProbe {
   sampleRate: number;
 }
 
-export async function probeAiff(
+export async function probeAudioInput(
   path: string,
   runtime: AudioRuntime,
   runner: CommandRunner,
@@ -46,8 +46,9 @@ export async function probeAiff(
   if (audio === undefined || audio.channels === undefined || audio.sample_rate === undefined) {
     throw new Error("Input does not contain a supported audio stream");
   }
-  if (!parsed.format.format_name.split(",").includes("aiff")) {
-    throw new Error(`Input is not an AIFF container: ${parsed.format.format_name}`);
+  const formats = parsed.format.format_name.split(",");
+  if (!formats.some((format) => format === "aiff" || format === "wav")) {
+    throw new Error(`Input is not an AIFF or WAV container: ${parsed.format.format_name}`);
   }
 
   return {
