@@ -1,8 +1,9 @@
 import { access, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 import { z } from "zod";
 import type { SermonMetadata } from "../config/schema.js";
+import { assertArtworkPath } from "../config/schema.js";
 import { buildMp3Metadata } from "../metadata/sermon-metadata.js";
 import type { WordPressApi } from "./client.js";
 
@@ -52,11 +53,17 @@ const qcSchema = z.object({
 });
 
 export interface PublishSermonRequest {
+  artwork?: string;
   input: string;
   mediaHost: string;
   metadata: SermonMetadata;
   publish: boolean;
   qcReport: string;
+}
+
+function artworkContentType(path: string): "image/jpeg" | "image/png" {
+  assertArtworkPath(path);
+  return extname(path).toLowerCase() === ".png" ? "image/png" : "image/jpeg";
 }
 
 function verifyUploadedMediaUrl(url: string, expectedHost: string): void {
@@ -283,22 +290,39 @@ export async function publishSermon(
         `sermons?context=edit&${seriesRestBase}=${series.id}&orderby=date&order=desc&per_page=20`,
       ),
     );
-  const featuredMedia = seriesPosts.find((post) => post.featured_media > 0)?.featured_media;
-  if (!featuredMedia) {
+  let featuredMedia = seriesPosts.find((post) => post.featured_media > 0)?.featured_media;
+  if (!featuredMedia && !request.artwork) {
     throw new Error(
-      `No existing sermon in ${request.metadata.sermonSeries} has Series artwork to reuse`,
+      `No existing sermon in ${request.metadata.sermonSeries} has Series artwork to reuse; pass --artwork for the first sermon`,
     );
   }
 
-  const uploaded = mediaSchema.parse(await api.uploadMedia(request.input));
+  let uploadedArtwork: z.infer<typeof mediaSchema> | undefined;
+  let uploadedAudio: z.infer<typeof mediaSchema> | undefined;
   let createdPostId: number | undefined;
   try {
-    verifyUploadedMediaUrl(uploaded.source_url, request.mediaHost);
-    await api.post(`media/${uploaded.id}`, {
+    if (!featuredMedia && request.artwork) {
+      const artworkPath = resolve(request.artwork);
+      await access(artworkPath, constants.R_OK);
+      uploadedArtwork = mediaSchema.parse(
+        await api.uploadMedia(artworkPath, artworkContentType(artworkPath)),
+      );
+      verifyUploadedMediaUrl(uploadedArtwork.source_url, request.mediaHost);
+      await api.post(`media/${uploadedArtwork.id}`, {
+        title: `${request.metadata.sermonSeries} artwork`,
+      });
+      featuredMedia = uploadedArtwork.id;
+    }
+    if (!featuredMedia) {
+      throw new Error("Series artwork could not be resolved");
+    }
+    uploadedAudio = mediaSchema.parse(await api.uploadMedia(request.input));
+    verifyUploadedMediaUrl(uploadedAudio.source_url, request.mediaHost);
+    await api.post(`media/${uploadedAudio.id}`, {
       title: request.metadata.title ?? request.metadata.scripture,
     });
     const meta = {
-      _ct_sm_audio_file: uploaded.source_url,
+      _ct_sm_audio_file: uploadedAudio.source_url,
       _ct_sm_audio_length: formatDuration(durationSeconds),
       _ct_sm_audio_button_text: "Download Audio",
       ...buildScriptureMeta(request.metadata.scripture),
@@ -318,7 +342,10 @@ export async function publishSermon(
       }),
     );
     createdPostId = created.id;
-    await api.post(`media/${uploaded.id}`, { post: created.id });
+    await api.post(`media/${uploadedAudio.id}`, { post: created.id });
+    if (uploadedArtwork) {
+      await api.post(`media/${uploadedArtwork.id}`, { post: created.id });
+    }
     const verified = sermonSchema.parse(await api.get(`sermons/${created.id}?context=edit`));
     verifySermonReadback(verified, {
       date,
@@ -330,14 +357,19 @@ export async function publishSermon(
       title,
     });
     const verifiedMedia = associatedMediaSchema.parse(
-      await api.get(`media/${uploaded.id}?context=edit`),
+      await api.get(`media/${uploadedAudio.id}?context=edit`),
     );
-    if (verifiedMedia.post !== created.id || verifiedMedia.source_url !== uploaded.source_url) {
-      throw new Error(`WordPress did not associate media ${uploaded.id} with post ${created.id}`);
+    if (
+      verifiedMedia.post !== created.id ||
+      verifiedMedia.source_url !== uploadedAudio.source_url
+    ) {
+      throw new Error(
+        `WordPress did not associate media ${uploadedAudio.id} with post ${created.id}`,
+      );
     }
     return {
-      mediaId: uploaded.id,
-      mediaUrl: uploaded.source_url,
+      mediaId: uploadedAudio.id,
+      mediaUrl: uploadedAudio.source_url,
       postId: verified.id,
       postStatus: verified.status,
       postUrl: verified.link,
@@ -346,7 +378,12 @@ export async function publishSermon(
     if (createdPostId !== undefined) {
       await api.delete(`sermons/${createdPostId}?force=true`).catch(() => undefined);
     }
-    await api.delete(`media/${uploaded.id}?force=true`).catch(() => undefined);
+    if (uploadedAudio) {
+      await api.delete(`media/${uploadedAudio.id}?force=true`).catch(() => undefined);
+    }
+    if (uploadedArtwork) {
+      await api.delete(`media/${uploadedArtwork.id}?force=true`).catch(() => undefined);
+    }
     throw error;
   }
 }

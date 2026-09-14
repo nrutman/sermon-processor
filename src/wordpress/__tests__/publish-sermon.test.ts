@@ -112,6 +112,7 @@ function createApi(options: ApiOptions = {}) {
       return { id: 10, name: "Alice Smith", slug: "alice-smith" };
     }
     if (path === "media/50") return { id: 50 };
+    if (path === "media/30") return { id: 30 };
     if (path === "sermons") {
       if (options.postError) throw options.postError;
       if (typeof body !== "object" || body === null || !("meta" in body)) {
@@ -134,10 +135,15 @@ function createApi(options: ApiOptions = {}) {
     delete: vi.fn<(path: string) => Promise<void>>(async () => undefined),
     get,
     post,
-    uploadMedia: vi.fn<(path: string) => Promise<unknown>>(async () => ({
-      id: 50,
-      source_url: mediaUrl,
-    })),
+    uploadMedia: vi.fn<(path: string, contentType?: string) => Promise<unknown>>(
+      async (_path, contentType) =>
+        contentType?.startsWith("image/")
+          ? {
+              id: 30,
+              source_url: "https://media.example.org/wp-content/uploads/series.png",
+            }
+          : { id: 50, source_url: mediaUrl },
+    ),
   } satisfies WordPressApi;
 }
 
@@ -244,6 +250,34 @@ describe("WordPress sermon publishing", () => {
       "No existing sermon in Example Series has Series artwork to reuse",
     );
     expect(api.uploadMedia).not.toHaveBeenCalled();
+  });
+
+  it("uploads supplied Series artwork for the first sermon", async () => {
+    const artwork = join(request.input, "..", "series.png");
+    await writeFile(artwork, "artwork");
+    request.artwork = artwork;
+    const api = createApi({ seriesPosts: [] });
+
+    await publishSermon(request, api);
+
+    expect(api.uploadMedia).toHaveBeenNthCalledWith(1, artwork, "image/png");
+    expect(api.uploadMedia).toHaveBeenNthCalledWith(2, request.input);
+    expect(api.post).toHaveBeenCalledWith(
+      "sermons",
+      expect.objectContaining({ featured_media: 30 }),
+    );
+    expect(api.post).toHaveBeenCalledWith("media/30", { post: 40 });
+  });
+
+  it("removes first-sermon artwork when post creation fails", async () => {
+    const artwork = join(request.input, "..", "series.png");
+    await writeFile(artwork, "artwork");
+    request.artwork = artwork;
+    const api = createApi({ postError: new Error("post rejected"), seriesPosts: [] });
+
+    await expect(publishSermon(request, api)).rejects.toThrow("post rejected");
+    expect(api.delete).toHaveBeenCalledWith("media/50?force=true");
+    expect(api.delete).toHaveBeenCalledWith("media/30?force=true");
   });
 
   it("removes media and refuses to create a sermon when WordPress returns the wrong host", async () => {

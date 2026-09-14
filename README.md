@@ -107,6 +107,7 @@ Upload a verified MP3 and create a draft sermon with:
 ```sh
 pnpm publish-sermon ~/Downloads/SERMON-2026-08-23-Parker.mp3 \
   --qc .sermon-qc/SERMON-2026-08-23-Parker.mp3.qc.json \
+  --artwork ~/Downloads/example-series.png \
   --preacher "Alex Parker" \
   --series "Example Series" \
   --date 2026-08-23 \
@@ -116,7 +117,8 @@ pnpm publish-sermon ~/Downloads/SERMON-2026-08-23-Parker.mp3 \
 
 The publisher refuses duplicate sermon dates, sets the post time to noon,
 matches close speaker and Series names, reuses the featured image from the
-matched Series, and reads the post back for verification. It deletes the
+matched Series or accepts explicit artwork for its first sermon, and reads the
+post back for verification. It deletes the
 uploaded media and refuses to create a sermon unless WordPress returns an HTTPS
 URL on `WORDPRESS_MEDIA_HOST`. Keep all real site URLs, hostnames, usernames,
 and organization values only in the gitignored `.env.local`. Add `--publish`

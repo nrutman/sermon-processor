@@ -32,6 +32,7 @@ interface PlanMetadataCommandOptions {
 }
 
 interface PublishCommandOptions {
+  artwork?: string;
   date: string;
   preacher: string;
   publish: boolean;
@@ -139,6 +140,7 @@ export function createProgram(): Command {
     .requiredOption("--series <name>", "sermon series")
     .requiredOption("--date <yyyy-mm-dd>", "sermon date")
     .requiredOption("--scripture <reference>", "main preaching text")
+    .option("--artwork <path>", "Series artwork for its first WordPress sermon")
     .option("--title <title>", "sermon title; defaults to the scripture reference")
     .option("--publish", "publish immediately instead of creating a draft", false)
     .action(async (input: string, options: PublishCommandOptions) => {
@@ -154,6 +156,7 @@ export function createProgram(): Command {
       });
       const result = await publishSermon(
         {
+          ...(options.artwork ? { artwork: options.artwork } : {}),
           input,
           mediaHost: wordpressConfig.mediaHost,
           metadata,

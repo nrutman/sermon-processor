@@ -34,8 +34,9 @@ standard WordPress REST API.
 
 Search all statuses for an existing sermon on the requested date. Stop on a
 duplicate rather than uploading another attachment. Match the Series
-conservatively and require an existing sermon in that Series with artwork to
-reuse. Never guess when multiple terms are plausible.
+conservatively and reuse artwork from an existing sermon in that Series. For
+the first sermon in a new Series, require an explicitly supplied local JPEG or
+PNG. Never guess when multiple terms are plausible.
 
 ## Create a draft
 
@@ -44,6 +45,7 @@ Draft creation is the default:
 ```sh
 pnpm publish-sermon <sermon.mp3> \
   --qc <sermon.qc.json> \
+  --artwork <series-artwork.png> \
   --preacher "<preacher>" \
   --series "<series>" \
   --date <yyyy-mm-dd> \
