@@ -32,6 +32,7 @@ interface PlanMetadataCommandOptions {
 }
 
 interface PublishCommandOptions {
+  artwork?: string;
   date: string;
   preacher: string;
   publish: boolean;
@@ -43,7 +44,10 @@ interface PublishCommandOptions {
 
 export function createProgram(): Command {
   const program = new Command();
-  program.name("sermon").description("Clean and master AIFF sermon recordings").version("0.1.0");
+  program
+    .name("sermon")
+    .description("Clean and master AIFF or WAV sermon recordings")
+    .version("0.1.0");
 
   program
     .command("plan-metadata")
@@ -80,8 +84,8 @@ export function createProgram(): Command {
 
   program
     .command("process")
-    .description("Process one AIFF sermon recording")
-    .argument("<input>", "AIFF source file")
+    .description("Process one AIFF or WAV sermon recording")
+    .argument("<input>", "AIFF or WAV source file")
     .requiredOption("--preacher <name>", "preacher/artist name")
     .requiredOption("--series <name>", "sermon series/album")
     .requiredOption("--date <yyyy-mm-dd>", "sermon date")
@@ -110,7 +114,16 @@ export function createProgram(): Command {
         overwrite: options.overwrite,
         keepWorkFiles: options.keepWorkFiles,
       });
-      const result = await processSermon(request);
+      const result = await processSermon(request, undefined, (progress) => {
+        const duration =
+          progress.durationSeconds === undefined
+            ? ""
+            : ` (${progress.durationSeconds.toFixed(1)}s)`;
+        const detail = progress.message ? ` — ${progress.message}` : "";
+        const marker =
+          progress.status === "started" ? "→" : progress.status === "completed" ? "✓" : "✗";
+        console.error(`${marker} ${progress.stage}${duration}${detail}`);
+      });
       console.log(`Created ${result.outputPath}`);
       console.log(`QC report: ${result.qcReportPath}`);
       if (result.workDirectory !== undefined) {
@@ -127,6 +140,7 @@ export function createProgram(): Command {
     .requiredOption("--series <name>", "sermon series")
     .requiredOption("--date <yyyy-mm-dd>", "sermon date")
     .requiredOption("--scripture <reference>", "main preaching text")
+    .option("--artwork <path>", "Series artwork for its first WordPress sermon")
     .option("--title <title>", "sermon title; defaults to the scripture reference")
     .option("--publish", "publish immediately instead of creating a draft", false)
     .action(async (input: string, options: PublishCommandOptions) => {
@@ -142,6 +156,7 @@ export function createProgram(): Command {
       });
       const result = await publishSermon(
         {
+          ...(options.artwork ? { artwork: options.artwork } : {}),
           input,
           mediaHost: wordpressConfig.mediaHost,
           metadata,

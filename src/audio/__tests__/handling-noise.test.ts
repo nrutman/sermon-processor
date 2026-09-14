@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -91,7 +91,7 @@ describe("handling-noise detection", () => {
     ]);
   });
 
-  it("copies the input unchanged when handling-noise removal is disabled", async () => {
+  it("reuses the input unchanged when handling-noise removal is disabled", async () => {
     const directory = await mkdtemp(join(tmpdir(), "handling-noise-test-"));
     const input = join(directory, "input.wav");
     const output = join(directory, "output.wav");
@@ -112,10 +112,12 @@ describe("handling-noise detection", () => {
 
     expect(events).toEqual([]);
     await expect(readFile(output, "utf8")).resolves.toBe("lossless audio fixture");
+    const [inputStat, outputStat] = await Promise.all([stat(input), stat(output)]);
+    expect(outputStat.ino).toBe(inputStat.ino);
     expect(runner.run).not.toHaveBeenCalled();
   });
 
-  it("copies the input unchanged when analysis finds no removable events", async () => {
+  it("reuses the input unchanged when analysis finds no removable events", async () => {
     const directory = await mkdtemp(join(tmpdir(), "handling-noise-test-"));
     const input = join(directory, "input.wav");
     const output = join(directory, "output.wav");
@@ -138,6 +140,8 @@ describe("handling-noise detection", () => {
 
     expect(events).toEqual([]);
     await expect(readFile(output, "utf8")).resolves.toBe("lossless audio fixture");
+    const [inputStat, outputStat] = await Promise.all([stat(input), stat(output)]);
+    expect(outputStat.ino).toBe(inputStat.ino);
     expect(runner.run).toHaveBeenCalledTimes(1);
   });
 });

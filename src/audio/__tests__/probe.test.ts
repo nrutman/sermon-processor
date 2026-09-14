@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommandRunner } from "../../process/run-command.js";
-import { probeAiff } from "../probe.js";
+import { probeAudioInput } from "../probe.js";
 import type { AudioRuntime } from "../runtime.js";
 
 const runtime: AudioRuntime = {
@@ -18,19 +18,19 @@ function runnerReturning(value: object): CommandRunner {
   };
 }
 
-describe("probeAiff", () => {
+describe("probeAudioInput", () => {
   it("rejects input without a supported audio stream", async () => {
     const runner = runnerReturning({
       format: { duration: "10", format_name: "aiff" },
       streams: [{ codec_name: "bin_data", codec_type: "data" }],
     });
 
-    await expect(probeAiff("input.aiff", runtime, runner)).rejects.toThrow(
+    await expect(probeAudioInput("input.aiff", runtime, runner)).rejects.toThrow(
       "Input does not contain a supported audio stream",
     );
   });
 
-  it("rejects audio in a non-AIFF container", async () => {
+  it("accepts WAV input", async () => {
     const runner = runnerReturning({
       format: { duration: "10", format_name: "wav" },
       streams: [
@@ -38,8 +38,20 @@ describe("probeAiff", () => {
       ],
     });
 
-    await expect(probeAiff("input.aiff", runtime, runner)).rejects.toThrow(
-      "Input is not an AIFF container: wav",
+    await expect(probeAudioInput("input.wav", runtime, runner)).resolves.toMatchObject({
+      codec: "pcm_s24le",
+      format: "wav",
+    });
+  });
+
+  it("rejects audio in an unsupported container", async () => {
+    const runner = runnerReturning({
+      format: { duration: "10", format_name: "flac" },
+      streams: [{ codec_name: "flac", codec_type: "audio", channels: 1, sample_rate: "48000" }],
+    });
+
+    await expect(probeAudioInput("input.flac", runtime, runner)).rejects.toThrow(
+      "Input is not an AIFF or WAV container: flac",
     );
   });
 });

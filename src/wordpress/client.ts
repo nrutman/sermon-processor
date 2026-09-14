@@ -9,7 +9,7 @@ export interface WordPressApi {
   delete(path: string): Promise<void>;
   get(path: string): Promise<unknown>;
   post(path: string, body: unknown): Promise<unknown>;
-  uploadMedia(path: string): Promise<unknown>;
+  uploadMedia(path: string, contentType?: string): Promise<unknown>;
 }
 
 export class WordPressClient implements WordPressApi {
@@ -65,12 +65,12 @@ export class WordPressClient implements WordPressApi {
     });
   }
 
-  async uploadMedia(path: string): Promise<unknown> {
+  async uploadMedia(path: string, contentType = "audio/mpeg"): Promise<unknown> {
     const { size } = await stat(path);
     const filename = basename(path).replaceAll(/["\r\n]/g, "");
     const boundary = `sermon-processor-${randomBytes(16).toString("hex")}`;
     const prefix = Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: audio/mpeg\r\n\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
     );
     const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
     return new Promise((resolvePromise, reject) => {

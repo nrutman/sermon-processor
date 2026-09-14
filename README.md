@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/nrutman/sermon-processor/actions/workflows/ci.yml/badge.svg)](https://github.com/nrutman/sermon-processor/actions/workflows/ci.yml)
 
-A TypeScript CLI that turns AIFF sermon recordings into cleaned, leveled,
+A TypeScript CLI that turns AIFF or PCM WAV sermon recordings into cleaned, leveled,
 speech-optimized 64 kbps MP3 files. FFmpeg performs the audio processing; the
 TypeScript application analyzes recordings, builds a reproducible filter plan,
 verifies output, and writes a QC report.
@@ -30,7 +30,7 @@ On macOS, install FFmpeg with `brew install ffmpeg`.
 ```sh
 pnpm install
 pnpm check
-pnpm process sermon.aiff \
+pnpm process sermon.wav \
   --preacher "John Smith" \
   --series "Sermon on the Mount" \
   --date 2026-08-23 \
@@ -82,7 +82,11 @@ Use `--output <path>` to override environment configuration for one run. The
 output directory is created when it does not already exist.
 
 QC reports are written to the gitignored `.sermon-qc/` directory in the project
-root, using the MP3 filename with a `.qc.json` suffix.
+root, using the MP3 filename with a `.qc.json` suffix. Processing prints each
+stage as it starts and finishes, and the report records per-stage timings. If
+MP3 encoding exceeds the true-peak ceiling, only normalization and encoding are
+retried with additional codec headroom when the measured loudness has room for
+the correction; the expensive source analysis and denoising stages are reused.
 
 ## WordPress publishing
 
@@ -103,6 +107,7 @@ Upload a verified MP3 and create a draft sermon with:
 ```sh
 pnpm publish-sermon ~/Downloads/SERMON-2026-08-23-Parker.mp3 \
   --qc .sermon-qc/SERMON-2026-08-23-Parker.mp3.qc.json \
+  --artwork ~/Downloads/example-series.png \
   --preacher "Alex Parker" \
   --series "Example Series" \
   --date 2026-08-23 \
@@ -112,7 +117,8 @@ pnpm publish-sermon ~/Downloads/SERMON-2026-08-23-Parker.mp3 \
 
 The publisher refuses duplicate sermon dates, sets the post time to noon,
 matches close speaker and Series names, reuses the featured image from the
-matched Series, and reads the post back for verification. It deletes the
+matched Series or accepts explicit artwork for its first sermon, and reads the
+post back for verification. It deletes the
 uploaded media and refuses to create a sermon unless WordPress returns an HTTPS
 URL on `WORDPRESS_MEDIA_HOST`. Keep all real site URLs, hostnames, usernames,
 and organization values only in the gitignored `.env.local`. Add `--publish`

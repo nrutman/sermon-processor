@@ -1,4 +1,4 @@
-import { copyFile, readFile, rm } from "node:fs/promises";
+import { copyFile, link, readFile, rm } from "node:fs/promises";
 import { RealTimeVAD } from "avr-vad";
 import type { AudioRuntime } from "./runtime.js";
 import type { CommandRunner } from "../process/run-command.js";
@@ -349,7 +349,7 @@ export async function removeHandlingNoise(
   runner: CommandRunner,
 ): Promise<HandlingNoiseEvent[]> {
   if (!options.enabled) {
-    await copyFile(renderInput, output);
+    await reuseLosslessStage(renderInput, output);
     return [];
   }
 
@@ -357,7 +357,7 @@ export async function removeHandlingNoise(
   const events = classifyHandlingNoise(frames, silenceThresholdDb, options, speechSegments);
   const filter = buildRemovalFilter(durationSeconds, events, options.crossfadeSeconds);
   if (filter === undefined) {
-    await copyFile(renderInput, output);
+    await reuseLosslessStage(renderInput, output);
     return events;
   }
   await runner.run(runtime.ffmpegPath, [
@@ -375,6 +375,16 @@ export async function removeHandlingNoise(
     output,
   ]);
   return events;
+}
+
+async function reuseLosslessStage(input: string, output: string): Promise<void> {
+  try {
+    await link(input, output);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTSUP") throw error;
+    await copyFile(input, output);
+  }
 }
 
 export const handlingNoiseInternals = { buildRemovalFilter, groupCandidateFrames };

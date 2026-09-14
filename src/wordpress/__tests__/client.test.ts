@@ -117,7 +117,7 @@ describe("WordPressClient", () => {
     });
     const client = new WordPressClient(wordpressConfig);
 
-    await expect(client.uploadMedia(path)).resolves.toMatchObject({ id: 50 });
+    await expect(client.uploadMedia(path, "image/png")).resolves.toMatchObject({ id: 50 });
 
     expect(requestUrl).toBe("https://church.example.org/wp-json/wp/v2/media");
     expect(requestOptions.method).toBe("POST");
@@ -127,6 +127,7 @@ describe("WordPressClient", () => {
     expect(body.toString("utf8")).toContain(
       'Content-Disposition: form-data; name="file"; filename="sermon.mp3"',
     );
+    expect(body.toString("utf8")).toContain("Content-Type: image/png");
     expect(body.toString("utf8")).toContain("audio-data");
     expect(requestOptions.headers?.["Content-Length"]).toBe(body.length);
   });

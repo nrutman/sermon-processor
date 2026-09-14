@@ -44,6 +44,20 @@ describe("process command", () => {
       workDirectory: "/tmp/work",
     });
     vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const progressOutput = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.processSermon.mockImplementationOnce(async (_request, _runner, reportProgress) => {
+      reportProgress?.({ stage: "Decode canonical WAV", status: "started" });
+      reportProgress?.({
+        durationSeconds: 1.25,
+        stage: "Decode canonical WAV",
+        status: "completed",
+      });
+      return {
+        outputPath: "/tmp/output.mp3",
+        qcReportPath: "/tmp/output.qc.json",
+        workDirectory: "/tmp/work",
+      };
+    });
 
     await createProgram().parseAsync(
       [
@@ -84,6 +98,8 @@ describe("process command", () => {
       output: "/tmp/output.mp3",
       overwrite: true,
     });
+    expect(progressOutput).toHaveBeenCalledWith("→ Decode canonical WAV");
+    expect(progressOutput).toHaveBeenCalledWith("✓ Decode canonical WAV (1.3s)");
   });
 });
 
