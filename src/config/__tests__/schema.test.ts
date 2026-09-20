@@ -28,7 +28,52 @@ describe("processRequestSchema", () => {
         maximumDurationSeconds: 1.5,
         minimumConfidence: 0.86,
       },
+      transcription: {
+        enabled: false,
+        maximumGapSeconds: 30,
+        minimumGapSeconds: 2,
+        minimumWordConfidence: 0.5,
+        retainedGapSeconds: 0.4,
+      },
     });
+  });
+
+  it("requires a model when transcription-assisted shortening is enabled", () => {
+    expect(() =>
+      processRequestSchema.parse({
+        artwork: "artwork.png",
+        input: "sermon.aiff",
+        output: "sermon.mp3",
+        metadata: {
+          organization: "Example Organization",
+          preacher: "Jane Smith",
+          sermonSeries: "The Kingdom",
+          date: "2026-08-23",
+          scripture: "Matthew 7:7–12",
+        },
+        processing: { transcription: { enabled: true } },
+      }),
+    ).toThrow("A Whisper model path is required");
+  });
+
+  it("requires a VAD model when transcription-assisted shortening is enabled", () => {
+    expect(() =>
+      processRequestSchema.parse({
+        artwork: "artwork.png",
+        input: "sermon.aiff",
+        output: "sermon.mp3",
+        metadata: {
+          organization: "Example Organization",
+          preacher: "Jane Smith",
+          sermonSeries: "The Kingdom",
+          date: "2026-08-23",
+          scripture: "Matthew 7:7–12",
+        },
+        processing: {
+          transcription: { enabled: true, modelPath: "/models/ggml-base.en.bin" },
+        },
+      }),
+    ).toThrow("A Whisper VAD model path is required");
   });
 
   it("rejects impossible calendar dates", () => {
