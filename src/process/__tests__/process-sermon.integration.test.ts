@@ -50,6 +50,9 @@ const qcReportSubsetSchema = z.object({
     stages: z.array(z.object({ durationSeconds: z.number().nonnegative(), stage: z.string() })),
     totalDurationSeconds: z.number().positive(),
   }),
+  transcription: z
+    .object({ gaps: z.array(z.object({ action: z.string() })), words: z.array(z.object({})) })
+    .optional(),
 });
 
 describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
@@ -171,6 +174,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
         expect.objectContaining({ stage: "Analyze source noise" }),
         expect.objectContaining({ stage: "Detect speech" }),
         expect.objectContaining({ stage: "Repair and denoise" }),
+        expect.objectContaining({ stage: "Transcribe and shorten non-speech gaps" }),
       ]),
     );
     expect(report.noise.afterDenoising.pauseThresholdDb).toBeGreaterThan(

@@ -18,6 +18,7 @@ import {
   repairAndDenoise,
 } from "../audio/render.js";
 import { inspectAudioRuntime } from "../audio/runtime.js";
+import { transcribeAndShortenGaps } from "../audio/transcription.js";
 import {
   assertAudioInputPath,
   assertArtworkPath,
@@ -152,9 +153,10 @@ export async function processSermon(
   const canonicalPath = join(workDirectory, "01-canonical.wav");
   const denoisedPath = join(workDirectory, "02-denoised.wav");
   const handlingCleanPath = join(workDirectory, "03-handling-clean.wav");
-  const premasterPath = join(workDirectory, "04-premaster.wav");
-  const normalizedPath = join(workDirectory, "05-normalized.wav");
-  const encodedPath = join(workDirectory, "06-output.mp3");
+  const transcriptCleanPath = join(workDirectory, "04-transcript-clean.wav");
+  const premasterPath = join(workDirectory, "05-premaster.wav");
+  const normalizedPath = join(workDirectory, "06-normalized.wav");
+  const encodedPath = join(workDirectory, "07-output.mp3");
   let completed = false;
 
   try {
@@ -215,9 +217,23 @@ export async function processSermon(
       ),
     ]);
 
+    const transcription = await runStage("Transcribe and shorten non-speech gaps", () =>
+      transcribeAndShortenGaps(
+        canonicalPath,
+        handlingCleanPath,
+        transcriptCleanPath,
+        join(workDirectory, "transcript"),
+        inputProbe.durationSeconds,
+        speechSegments,
+        request.processing.transcription,
+        runtime,
+        runner,
+      ),
+    );
+
     await runStage("Create premaster", () =>
       createPremaster(
-        handlingCleanPath,
+        transcriptCleanPath,
         premasterPath,
         noiseAfterDenoising.pauseThresholdDb,
         request.processing,
@@ -315,7 +331,7 @@ export async function processSermon(
 
     const qcReportPath = join(request.qcDirectory, `${basename(request.output)}.qc.json`);
     const report: QcReport = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       createdAt: new Date().toISOString(),
       input: { path: request.input, ...inputProbe },
       output: { path: request.output, ...outputTechnical },
@@ -340,6 +356,7 @@ export async function processSermon(
         output: encoded.result.outputLoudness,
       },
       handlingNoise,
+      ...(transcription === undefined ? {} : { transcription }),
       warnings: [
         ...(noiseBeforeDenoising.usedFallback || noiseAfterDenoising.usedFallback
           ? [

@@ -26,6 +26,16 @@ const defaultHandlingNoise = {
   crossfadeSeconds: 0.03,
 } as const;
 
+const defaultTranscription = {
+  enabled: false,
+  language: "en",
+  maximumGapSeconds: 30,
+  minimumGapSeconds: 2,
+  minimumWordConfidence: 0.5,
+  retainedGapSeconds: 0.4,
+  crossfadeSeconds: 0.03,
+} as const;
+
 export const processingOptionsSchema = z.object({
   highpassHz: z.number().int().min(20).max(200).default(75),
   noiseReductionDb: z.number().min(0).max(24).default(10),
@@ -44,6 +54,43 @@ export const processingOptionsSchema = z.object({
       crossfadeSeconds: z.number().min(0.005).max(0.1).default(0.03),
     })
     .default(defaultHandlingNoise),
+  transcription: z
+    .object({
+      enabled: z.boolean().default(false),
+      command: z.string().trim().min(1).optional(),
+      modelPath: z.string().trim().min(1).optional(),
+      vadModelPath: z.string().trim().min(1).optional(),
+      language: z.string().trim().min(2).default("en"),
+      maximumGapSeconds: z.number().min(2).max(300).default(30),
+      minimumGapSeconds: z.number().min(1).max(30).default(2),
+      minimumWordConfidence: z.number().min(0).max(1).default(0.5),
+      retainedGapSeconds: z.number().min(0.1).max(1).default(0.4),
+      crossfadeSeconds: z.number().min(0.005).max(0.1).default(0.03),
+    })
+    .default(defaultTranscription)
+    .superRefine((value, context) => {
+      if (value.enabled && value.modelPath === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "A Whisper model path is required when transcription is enabled",
+          path: ["modelPath"],
+        });
+      }
+      if (value.enabled && value.vadModelPath === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "A Whisper VAD model path is required when transcription is enabled",
+          path: ["vadModelPath"],
+        });
+      }
+      if (value.maximumGapSeconds < value.minimumGapSeconds) {
+        context.addIssue({
+          code: "custom",
+          message: "Maximum transcription gap must be at least the minimum gap",
+          path: ["maximumGapSeconds"],
+        });
+      }
+    }),
 });
 
 const defaultProcessingOptions = {
@@ -56,6 +103,7 @@ const defaultProcessingOptions = {
   truePeakDbtp: -1.5,
   targetLra: 7,
   handlingNoise: defaultHandlingNoise,
+  transcription: defaultTranscription,
 } as const;
 
 export const processRequestSchema = z.object({

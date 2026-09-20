@@ -19,11 +19,25 @@ report for review.
 - Node.js 22 or newer
 - pnpm 11
 - FFmpeg and FFprobe with the filters and LAME encoder checked at startup
+- Optional: whisper.cpp and a local GGML model for transcription-assisted gap shortening
 
 The microphone-handling speech guard uses the pretrained Silero VAD model
 bundled by the MIT-licensed `avr-vad` package and runs locally.
 
-On macOS, install FFmpeg with `brew install ffmpeg`.
+On macOS, install the audio tools with:
+
+```sh
+brew install ffmpeg whisper.cpp
+```
+
+Download a Whisper model from the
+[`whisper.cpp` model repository](https://huggingface.co/ggerganov/whisper.cpp/tree/main),
+and the Silero VAD model from the
+[`whisper-vad` repository](https://huggingface.co/ggml-org/whisper-vad), then set
+`WHISPER_MODEL_PATH` and `WHISPER_VAD_MODEL_PATH` in `.env.local`. When
+configured, the processor uses confident word timestamps and Silero VAD
+together to shorten bounded non-speech gaps. Low-confidence words, VAD
+disagreements, and gaps longer than 30 seconds are reported rather than changed.
 
 ## Development
 
@@ -87,6 +101,13 @@ stage as it starts and finishes, and the report records per-stage timings. If
 MP3 encoding exceeds the true-peak ceiling, only normalization and encoding are
 retried with additional codec headroom when the measured loudness has room for
 the correction; the expensive source analysis and denoising stages are reused.
+
+When transcription is enabled, the QC report also records every recognized word
+with its timestamp and confidence, every shortened transcript gap, the Whisper
+model filename, and the `whisper.cpp` version. When neither model path is
+configured, transcription stays disabled; a partial configuration fails rather
+than silently weakening the speech guard. Processing never downloads or
+substitutes a model.
 
 ## WordPress publishing
 

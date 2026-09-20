@@ -72,10 +72,10 @@ more permissive threshold for shortening long non-speech pauses.
 
 The CLI preserves its work directory automatically when any processing or QC
 step fails. Report that directory and inspect the numbered stage files before
-retrying. In particular, compare `04-premaster.wav`, `05-normalized.wav`, and
-`06-output.mp3` to identify whether a failure came from normalization,
-resampling, or lossy encoding. Do not rerun the complete source pipeline merely
-to experiment with the final encode.
+retrying. In particular, compare `04-transcript-clean.wav`, `05-premaster.wav`,
+`06-normalized.wav`, and `07-output.mp3` to identify whether a failure came from
+semantic gap shortening, normalization, resampling, or lossy encoding. Do not
+rerun the complete source pipeline merely to experiment with the final encode.
 
 Never bypass a failed loudness or true-peak check. Do not change the delivery
 target until the preserved normalized PCM and encoded MP3 have been measured
@@ -94,6 +94,8 @@ Read `.sermon-qc/<output-filename>.qc.json` and report:
   the conservative analysis threshold and pause-shortening threshold
 - Every removed microphone-handling event with timestamp and confidence
 - Every report-only event that may need listening review
+- Every transcription gap that was shortened or reported, including any Whisper
+  or VAD disagreement
 - Any warnings
 
 When an event is ambiguous, do not suggest lowering the global confidence

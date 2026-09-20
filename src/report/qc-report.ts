@@ -4,6 +4,7 @@ import type { LoudnessMeasurement } from "../audio/loudness.js";
 import type { AudioRuntime } from "../audio/runtime.js";
 import type { Mp3Metadata } from "../metadata/sermon-metadata.js";
 import type { VerifiedMp3Output } from "../audio/metadata.js";
+import type { TranscriptionAnalysis } from "../audio/transcription.js";
 
 export interface HandlingNoiseEvent {
   action: "removed" | "reported";
@@ -45,6 +46,7 @@ export interface QcReport {
     totalDurationSeconds: number;
   };
   runtime: AudioRuntime;
-  schemaVersion: 3;
+  schemaVersion: 4;
+  transcription?: TranscriptionAnalysis;
   warnings: string[];
 }

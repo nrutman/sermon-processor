@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { buildConfiguredOutputPath, loadSermonConfig } from "./config/output-config.js";
 import { loadPlanningCenterConfig } from "./config/planning-center-config.js";
 import { loadWordPressConfig } from "./config/wordpress-config.js";
+import { loadTranscriptionConfig } from "./config/transcription-config.js";
 import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { PlanningCenterClient } from "./planning-center/client.js";
 import { readSermonPlanMetadata } from "./planning-center/sermon-plan.js";
@@ -96,7 +97,10 @@ export function createProgram(): Command {
     .option("--overwrite", "replace an existing output", false)
     .option("--keep-work-files", "retain intermediate WAV files", false)
     .action(async (input: string, options: ProcessCommandOptions) => {
-      const config = await loadSermonConfig();
+      const [config, transcription] = await Promise.all([
+        loadSermonConfig(),
+        loadTranscriptionConfig(),
+      ]);
       const metadata = sermonMetadataSchema.parse({
         organization: config.organization,
         preacher: options.preacher,
@@ -113,6 +117,18 @@ export function createProgram(): Command {
         metadata,
         overwrite: options.overwrite,
         keepWorkFiles: options.keepWorkFiles,
+        ...(transcription === undefined
+          ? {}
+          : {
+              processing: {
+                transcription: {
+                  enabled: true,
+                  command: transcription.command,
+                  modelPath: transcription.modelPath,
+                  vadModelPath: transcription.vadModelPath,
+                },
+              },
+            }),
       });
       const result = await processSermon(request, undefined, (progress) => {
         const duration =
