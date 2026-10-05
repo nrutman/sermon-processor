@@ -194,6 +194,26 @@ describe("WordPress sermon publishing", () => {
     expect(result.postStatus).toBe("publish");
   });
 
+  it("uses a WordPress-only scripture range without changing QC metadata verification", async () => {
+    request.wordpressScripture = "Matthew 7:24–8:1";
+    const api = createApi();
+
+    await publishSermon(request, api);
+
+    expect(api.post).toHaveBeenCalledWith(
+      "sermons",
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          _ct_sm_bible01_book: "Matthew",
+          _ct_sm_bible01_start_chap: "7",
+          _ct_sm_bible01_start_verse: "24",
+          _ct_sm_bible01_end_chap: "8",
+          _ct_sm_bible01_end_verse: "1",
+        }),
+      }),
+    );
+  });
+
   it("refuses a QC report for another output before calling WordPress", async () => {
     await writeQcReport({ outputPath: "/tmp/another-sermon.mp3" });
     const api = createApi();
