@@ -41,6 +41,7 @@ interface PublishCommandOptions {
   scripture: string;
   series: string;
   title?: string;
+  wordpressScripture?: string;
 }
 
 export function createProgram(): Command {
@@ -156,6 +157,10 @@ export function createProgram(): Command {
     .requiredOption("--series <name>", "sermon series")
     .requiredOption("--date <yyyy-mm-dd>", "sermon date")
     .requiredOption("--scripture <reference>", "main preaching text")
+    .option(
+      "--wordpress-scripture <reference>",
+      "simplified WordPress scripture range; defaults to the MP3 scripture reference",
+    )
     .option("--artwork <path>", "Series artwork for its first WordPress sermon")
     .option("--title <title>", "sermon title; defaults to the scripture reference")
     .option("--publish", "publish immediately instead of creating a draft", false)
@@ -178,6 +183,7 @@ export function createProgram(): Command {
           metadata,
           publish: options.publish,
           qcReport: options.qc,
+          ...(options.wordpressScripture ? { wordpressScripture: options.wordpressScripture } : {}),
         },
         new WordPressClient(wordpressConfig),
       );

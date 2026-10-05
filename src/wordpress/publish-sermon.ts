@@ -59,6 +59,7 @@ export interface PublishSermonRequest {
   metadata: SermonMetadata;
   publish: boolean;
   qcReport: string;
+  wordpressScripture?: string;
 }
 
 function artworkContentType(path: string): "image/jpeg" | "image/png" {
@@ -325,7 +326,7 @@ export async function publishSermon(
       _ct_sm_audio_file: uploadedAudio.source_url,
       _ct_sm_audio_length: formatDuration(durationSeconds),
       _ct_sm_audio_button_text: "Download Audio",
-      ...buildScriptureMeta(request.metadata.scripture),
+      ...buildScriptureMeta(request.wordpressScripture ?? request.metadata.scripture),
     };
     const title = request.metadata.title ?? request.metadata.scripture;
     const status = request.publish ? "publish" : "draft";

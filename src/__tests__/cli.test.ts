@@ -162,6 +162,53 @@ describe("publish command", () => {
       qcReport: "/tmp/sermon.qc.json",
     });
   });
+
+  it("passes a WordPress-only scripture range separately from verified MP3 metadata", async () => {
+    mocks.loadSermonConfig.mockResolvedValue({
+      filenameFormat: "SERMON-YYYY-MM-DD-LAST",
+      organization: "Example Church",
+      outputDirectory: "/tmp",
+    });
+    mocks.loadWordPressConfig.mockResolvedValue({
+      applicationPassword: "app-password",
+      mediaHost: "media.example.org",
+      siteUrl: "https://church.example.org",
+      username: "publisher",
+    });
+    mocks.publishSermon.mockResolvedValue({
+      mediaId: 50,
+      mediaUrl: "https://media.example.org/sermon.mp3",
+      postId: 40,
+      postStatus: "draft",
+      postUrl: "https://church.example.org/sermons/sample-sermon",
+    });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await createProgram().parseAsync(
+      [
+        "publish",
+        "/tmp/sermon.mp3",
+        "--qc",
+        "/tmp/sermon.qc.json",
+        "--preacher",
+        "Alice Smith",
+        "--series",
+        "Example Series",
+        "--date",
+        "2026-01-04",
+        "--scripture",
+        "Matthew 5:1–12, 17–20",
+        "--wordpress-scripture",
+        "Matthew 5:1–20",
+      ],
+      { from: "user" },
+    );
+
+    expect(mocks.publishSermon.mock.calls[0]?.[0]).toMatchObject({
+      metadata: { scripture: "Matthew 5:1–12, 17–20" },
+      wordpressScripture: "Matthew 5:1–20",
+    });
+  });
 });
 
 describe("plan-metadata command", () => {
