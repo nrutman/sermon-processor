@@ -118,6 +118,9 @@ describe("final rendering", () => {
 
     expect(calls[0]).toContain("pcm_s24le");
     expect(calls[0]?.at(calls[0]?.indexOf("-af") + 1)).toContain("TP=-3.5");
+    expect(calls[0]?.at(calls[0]?.indexOf("-af") + 1)).toContain(
+      "alimiter=limit=0.57:attack=5:release=50:level=false:latency=true",
+    );
     expect(calls[0]?.at(calls[0]?.indexOf("-af") + 1)).toMatch(/loudnorm=.*aresample=44100/);
   });
 

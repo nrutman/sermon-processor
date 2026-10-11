@@ -26,6 +26,7 @@ export interface QcReport {
   input: AudioProbe & { path: string };
   loudness: {
     beforeNormalization: LoudnessMeasurement;
+    codecPreencodePeakLimitDbfs: number;
     normalizedPcm: LoudnessMeasurement;
     normalizationTruePeakTargetDbtp: number;
     output: LoudnessMeasurement;
@@ -46,7 +47,7 @@ export interface QcReport {
     totalDurationSeconds: number;
   };
   runtime: AudioRuntime;
-  schemaVersion: 4;
+  schemaVersion: 5;
   transcription?: TranscriptionAnalysis;
   warnings: string[];
 }
