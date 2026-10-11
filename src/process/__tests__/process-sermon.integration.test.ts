@@ -35,6 +35,7 @@ const ttsAvailable = sayAvailable || espeakAvailable;
 const qcReportSubsetSchema = z.object({
   handlingNoise: z.array(z.object({ action: z.string() })),
   loudness: z.object({
+    codecPreencodePeakLimitDbfs: z.number(),
     normalizedPcm: z.object({ inputI: z.number(), inputTp: z.number() }),
     normalizationTruePeakTargetDbtp: z.number(),
     output: z.object({ inputI: z.number(), inputTp: z.number() }),
@@ -162,6 +163,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-17);
     expect(report.loudness.output.inputI).toBeLessThanOrEqual(-15);
     expect(report.loudness.normalizationTruePeakTargetDbtp).toBe(-4.3);
+    expect(report.loudness.codecPreencodePeakLimitDbfs).toBeCloseTo(-4.88, 2);
     expect(report.loudness.normalizedPcm.inputTp).toBeLessThanOrEqual(-3.4);
     expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
     expect(report.metadata.comment).toBe(

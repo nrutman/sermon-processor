@@ -11,6 +11,7 @@ import { verifyMp3Metadata } from "../audio/metadata.js";
 import { probeAudioInput } from "../audio/probe.js";
 import {
   createPremaster,
+  codecPreencodePeakLimitDbfs,
   captureNoiseProfile,
   decodeToCanonicalWav,
   encodeMp3,
@@ -331,7 +332,7 @@ export async function processSermon(
 
     const qcReportPath = join(request.qcDirectory, `${basename(request.output)}.qc.json`);
     const report: QcReport = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       createdAt: new Date().toISOString(),
       input: { path: request.input, ...inputProbe },
       output: { path: request.output, ...outputTechnical },
@@ -351,6 +352,7 @@ export async function processSermon(
       },
       loudness: {
         beforeNormalization: encoded.result.loudnessBeforeNormalization,
+        codecPreencodePeakLimitDbfs,
         normalizedPcm: encoded.result.normalizedLoudness,
         normalizationTruePeakTargetDbtp: encoded.result.normalizationTruePeakTargetDbtp,
         output: encoded.result.outputLoudness,

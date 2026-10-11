@@ -5,6 +5,11 @@ import type { Mp3Metadata } from "../metadata/sermon-metadata.js";
 import type { LoudnessMeasurement } from "./loudness.js";
 import type { RoomToneInterval } from "./analyze.js";
 
+// Reserve extra sample-peak margin before MP3 encoding because the codec can
+// introduce inter-sample peaks beyond loudnorm's true-peak target.
+export const codecPreencodePeakLimit = 0.57;
+export const codecPreencodePeakLimitDbfs = 20 * Math.log10(codecPreencodePeakLimit);
+
 export function parseNoiseProfile(output: string): number[] {
   const values = output
     .match(/\bbn=([\d.eE+\- ]+)/)?.[1]
@@ -234,7 +239,7 @@ export async function normalizePremaster(
     "-i",
     input,
     "-af",
-    `${loudnorm},aresample=44100`,
+    `${loudnorm},alimiter=limit=${codecPreencodePeakLimit}:attack=5:release=50:level=false:latency=true,aresample=44100`,
     "-c:a",
     "pcm_s24le",
     "-ac",
