@@ -1,7 +1,7 @@
 ---
 name: publish-sermon
 description: Uploads a verified sermon MP3 to WordPress, creates a complete draft, and publishes it only after explicit approval.
-compatibility: Requires Node.js 22+, pnpm 11, WordPress sermon REST resources, and Application Password configuration.
+compatibility: Requires Node.js 22.12+, 24.x, or 26+, pnpm 12, WordPress sermon REST resources, and Application Password configuration.
 ---
 
 # Publish a sermon to WordPress

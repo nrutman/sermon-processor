@@ -1,7 +1,7 @@
 ---
 name: process-sermon
 description: Processes an AIFF or WAV sermon recording into a cleaned, leveled, 64 kbps MP3 and reviews its QC report. Use when preparing sermon audio for publication.
-compatibility: Requires Node.js 22+, pnpm 11, FFmpeg, and FFprobe.
+compatibility: Requires Node.js 22.12+, 24.x, or 26+, pnpm 12, FFmpeg, and FFprobe.
 ---
 
 # Process a sermon recording

@@ -16,8 +16,8 @@ report for review.
 
 ## Requirements
 
-- Node.js 22 or newer
-- pnpm 11
+- Node.js 22.12+, 24.x, or 26+
+- pnpm 12
 - FFmpeg and FFprobe with the filters and LAME encoder checked at startup
 - Optional: whisper.cpp and a local GGML model for transcription-assisted gap shortening
 
