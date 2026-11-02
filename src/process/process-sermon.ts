@@ -29,6 +29,14 @@ import {
 import { buildMp3Metadata } from "../metadata/sermon-metadata.js";
 import type { QcReport } from "../report/qc-report.js";
 import { ExecaCommandRunner, type CommandRunner } from "./run-command.js";
+import {
+  readCheckpoint,
+  writeCheckpoint,
+  type Preparation,
+  type ProcessingCheckpoint,
+  hashFile,
+} from "./checkpoint.js";
+import { planCodecGain } from "../audio/codec-gain.js";
 
 export interface ProcessResult {
   outputPath: string;
@@ -107,8 +115,28 @@ export async function processSermon(
   runner: CommandRunner = new ExecaCommandRunner(),
   reportProgress: ProcessingProgressReporter = () => undefined,
 ): Promise<ProcessResult> {
+  return executeSermon(rawRequest, runner, reportProgress);
+}
+
+/** Resumes normalization and encoding from a fingerprint-verified lossless premaster. */
+export async function resumeSermon(
+  checkpointPath: string,
+  runner: CommandRunner = new ExecaCommandRunner(),
+  reportProgress: ProcessingProgressReporter = () => undefined,
+): Promise<ProcessResult> {
+  const checkpoint = await readCheckpoint(checkpointPath);
+  return executeSermon(checkpoint.request, runner, reportProgress, checkpoint);
+}
+
+async function executeSermon(
+  rawRequest: ProcessRequest,
+  runner: CommandRunner,
+  reportProgress: ProcessingProgressReporter,
+  resume?: ProcessingCheckpoint,
+): Promise<ProcessResult> {
   const processingStartedAt = performance.now();
-  const stageTimings: QcReport["processing"]["stages"] = [];
+  const stageTimings: QcReport["processing"]["stages"] = [...(resume?.stages ?? [])];
+  const preparationDurationSeconds = resume?.elapsedSeconds ?? 0;
   const runStage = async <Result>(
     stage: string,
     action: () => Promise<Result>,
@@ -137,7 +165,7 @@ export async function processSermon(
   const request = processRequestSchema.parse(rawRequest);
   assertAudioInputPath(request.input);
   assertArtworkPath(request.artwork);
-  if (!request.overwrite && (await pathExists(request.output))) {
+  if ((!request.overwrite || resume) && (await pathExists(request.output))) {
     throw new Error(`Output already exists: ${request.output}`);
   }
   await mkdir(dirname(request.output), { recursive: true });
@@ -146,11 +174,18 @@ export async function processSermon(
   const inputProbe = await runStage("Probe input", () =>
     probeAudioInput(request.input, runtime, runner),
   );
-  const workDirectory = join(
-    tmpdir(),
-    `sermon-${basename(request.input, extname(request.input))}-${randomUUID()}`,
-  );
+  const workDirectory =
+    resume?.workDirectory ??
+    join(tmpdir(), `sermon-${basename(request.input, extname(request.input))}-${randomUUID()}`);
   await mkdir(workDirectory, { recursive: true });
+  const encodingLock = join(workDirectory, "encoding.lock");
+  try {
+    await mkdir(encodingLock);
+  } catch {
+    throw new Error(
+      `Processing work directory is locked: ${encodingLock}. Verify no process is running before removing a stale lock.`,
+    );
+  }
   const canonicalPath = join(workDirectory, "01-canonical.wav");
   const denoisedPath = join(workDirectory, "02-denoised.wav");
   const handlingCleanPath = join(workDirectory, "03-handling-clean.wav");
@@ -161,87 +196,119 @@ export async function processSermon(
   let completed = false;
 
   try {
-    await runStage("Decode canonical WAV", () =>
-      decodeToCanonicalWav(request.input, canonicalPath, runtime, runner),
-    );
-    const [noiseBeforeDenoising, speechSegments] = await Promise.all([
-      runStage("Analyze source noise", () =>
-        analyzeNoiseFloor(canonicalPath, inputProbe.durationSeconds, runtime, runner),
-      ),
-      runStage("Detect speech", () =>
-        detectSpeechSegments(canonicalPath, join(workDirectory, "speech.vad.f32"), runtime, runner),
-      ),
-    ]);
-    const roomToneInterval = selectRoomToneInterval(noiseBeforeDenoising, speechSegments);
-    const noiseProfile =
-      roomToneInterval === undefined
-        ? undefined
-        : await runStage("Capture room-tone profile", () =>
-            captureNoiseProfile(
-              canonicalPath,
-              roomToneInterval,
-              noiseBeforeDenoising.noiseFloorDb,
-              runtime,
-              runner,
-            ),
-          );
-    await runStage("Repair and denoise", () =>
-      repairAndDenoise(
-        canonicalPath,
-        denoisedPath,
-        noiseBeforeDenoising.noiseFloorDb,
-        noiseProfile,
-        request.processing,
-        runtime,
-        runner,
-      ),
-    );
-    const [noiseAfterDenoising, handlingNoise]: [
-      Awaited<ReturnType<typeof analyzeNoiseFloor>>,
-      QcReport["handlingNoise"],
-    ] = await Promise.all([
-      runStage("Analyze denoised noise", () =>
-        analyzeNoiseFloor(denoisedPath, inputProbe.durationSeconds, runtime, runner),
-      ),
-      runStage("Remove handling noise", () =>
-        removeHandlingNoise(
+    const prepare = async (): Promise<Preparation> => {
+      await runStage("Decode canonical WAV", () =>
+        decodeToCanonicalWav(request.input, canonicalPath, runtime, runner),
+      );
+      const [noiseBeforeDenoising, speechSegments] = await Promise.all([
+        runStage("Analyze source noise", () =>
+          analyzeNoiseFloor(canonicalPath, inputProbe.durationSeconds, runtime, runner),
+        ),
+        runStage("Detect speech", () =>
+          detectSpeechSegments(
+            canonicalPath,
+            join(workDirectory, "speech.vad.f32"),
+            runtime,
+            runner,
+          ),
+        ),
+      ]);
+      const roomToneInterval = selectRoomToneInterval(noiseBeforeDenoising, speechSegments);
+      const noiseProfile =
+        roomToneInterval === undefined
+          ? undefined
+          : await runStage("Capture room-tone profile", () =>
+              captureNoiseProfile(
+                canonicalPath,
+                roomToneInterval,
+                noiseBeforeDenoising.noiseFloorDb,
+                runtime,
+                runner,
+              ),
+            );
+      await runStage("Repair and denoise", () =>
+        repairAndDenoise(
           canonicalPath,
           denoisedPath,
-          handlingCleanPath,
-          inputProbe.durationSeconds,
-          noiseBeforeDenoising.silenceThresholdDb,
-          request.processing.handlingNoise,
-          speechSegments,
+          noiseBeforeDenoising.noiseFloorDb,
+          noiseProfile,
+          request.processing,
           runtime,
           runner,
         ),
-      ),
-    ]);
+      );
+      const [noiseAfterDenoising, handlingNoise]: [
+        Awaited<ReturnType<typeof analyzeNoiseFloor>>,
+        QcReport["handlingNoise"],
+      ] = await Promise.all([
+        runStage("Analyze denoised noise", () =>
+          analyzeNoiseFloor(denoisedPath, inputProbe.durationSeconds, runtime, runner),
+        ),
+        runStage("Remove handling noise", () =>
+          removeHandlingNoise(
+            canonicalPath,
+            denoisedPath,
+            handlingCleanPath,
+            inputProbe.durationSeconds,
+            noiseBeforeDenoising.silenceThresholdDb,
+            request.processing.handlingNoise,
+            speechSegments,
+            runtime,
+            runner,
+          ),
+        ),
+      ]);
 
-    const transcription = await runStage("Transcribe and shorten non-speech gaps", () =>
-      transcribeAndShortenGaps(
-        canonicalPath,
-        handlingCleanPath,
-        transcriptCleanPath,
-        join(workDirectory, "transcript"),
-        inputProbe.durationSeconds,
-        speechSegments,
-        request.processing.transcription,
-        runtime,
-        runner,
-      ),
-    );
+      const transcription = await runStage("Transcribe and shorten non-speech gaps", () =>
+        transcribeAndShortenGaps(
+          canonicalPath,
+          handlingCleanPath,
+          transcriptCleanPath,
+          join(workDirectory, "transcript"),
+          inputProbe.durationSeconds,
+          speechSegments,
+          request.processing.transcription,
+          runtime,
+          runner,
+        ),
+      );
 
-    await runStage("Create premaster", () =>
-      createPremaster(
-        transcriptCleanPath,
-        premasterPath,
-        noiseAfterDenoising.pauseThresholdDb,
-        request.processing,
-        runtime,
-        runner,
-      ),
-    );
+      await runStage("Create premaster", () =>
+        createPremaster(
+          transcriptCleanPath,
+          premasterPath,
+          noiseAfterDenoising.pauseThresholdDb,
+          request.processing,
+          runtime,
+          runner,
+        ),
+      );
+      return {
+        noiseBeforeDenoising,
+        noiseAfterDenoising,
+        roomToneInterval,
+        noiseProfile,
+        handlingNoise,
+        transcription,
+      };
+    };
+    const preparation = resume?.preparation ?? (await prepare());
+    const {
+      noiseBeforeDenoising,
+      noiseAfterDenoising,
+      roomToneInterval,
+      noiseProfile,
+      handlingNoise,
+      transcription,
+    } = preparation;
+    await writeCheckpoint({
+      request,
+      workDirectory,
+      preparation,
+      stages: stageTimings,
+      elapsedSeconds:
+        preparationDurationSeconds + (performance.now() - processingStartedAt) / 1_000,
+    });
     const metadata = buildMp3Metadata(request.metadata);
     const encoded = await withAdaptiveCodecHeadroom(
       async (codecHeadroomDb, attempt) => {
@@ -321,6 +388,69 @@ export async function processSermon(
       request.processing.truePeakDbtp,
       reportProgress,
     );
+    const gainCorrectionDb = planCodecGain(
+      encoded.result.normalizedLoudness,
+      encoded.result.outputLoudness,
+      {
+        lufs: request.processing.targetLufs,
+        truePeak: request.processing.truePeakDbtp,
+        pcmTruePeak: encoded.result.normalizationTruePeakTargetDbtp,
+      },
+    );
+    if (gainCorrectionDb > 0) {
+      const correctedPath = join(workDirectory, "08-corrected.wav");
+      await runStage("Correct measured codec loudness loss", () =>
+        runner.run(runtime.ffmpegPath, [
+          "-hide_banner",
+          "-nostdin",
+          "-y",
+          "-i",
+          normalizedPath,
+          "-af",
+          `volume=${gainCorrectionDb.toFixed(6)}dB`,
+          "-c:a",
+          "pcm_s24le",
+          correctedPath,
+        ]),
+      );
+      const correctedPcm = await runStage("Verify corrected PCM", () =>
+        measureLoudness(
+          correctedPath,
+          {
+            lufs: request.processing.targetLufs,
+            lra: request.processing.targetLra,
+            truePeak: encoded.result.normalizationTruePeakTargetDbtp,
+          },
+          runtime,
+          runner,
+        ),
+      );
+      verifyOutputLoudness(
+        correctedPcm,
+        {
+          lufs: request.processing.targetLufs,
+          truePeak: encoded.result.normalizationTruePeakTargetDbtp,
+        },
+        normalizedPcmTruePeakToleranceDb,
+      );
+      await runStage("Encode corrected MP3", () =>
+        encodeMp3(correctedPath, encodedPath, request.artwork, metadata, runtime, runner),
+      );
+      encoded.result.normalizedLoudness = correctedPcm;
+      encoded.result.outputLoudness = await runStage("Measure corrected MP3", () =>
+        measureLoudness(
+          encodedPath,
+          {
+            lufs: request.processing.targetLufs,
+            lra: request.processing.targetLra,
+            truePeak: request.processing.truePeakDbtp,
+          },
+          runtime,
+          runner,
+        ),
+      );
+      encoded.attempts++;
+    }
     verifyOutputLoudness(encoded.result.outputLoudness, {
       lufs: request.processing.targetLufs,
       truePeak: request.processing.truePeakDbtp,
@@ -335,11 +465,12 @@ export async function processSermon(
       schemaVersion: 5,
       createdAt: new Date().toISOString(),
       input: { path: request.input, ...inputProbe },
-      output: { path: request.output, ...outputTechnical },
+      output: { path: request.output, sha256: await hashFile(request.output), ...outputTechnical },
       processing: {
         encodingAttempts: encoded.attempts,
         stages: stageTimings,
-        totalDurationSeconds: (performance.now() - processingStartedAt) / 1_000,
+        totalDurationSeconds:
+          preparationDurationSeconds + (performance.now() - processingStartedAt) / 1_000,
       },
       metadata,
       runtime,
@@ -352,7 +483,7 @@ export async function processSermon(
       },
       loudness: {
         beforeNormalization: encoded.result.loudnessBeforeNormalization,
-        codecPreencodePeakLimitDbfs,
+        codecPreencodePeakLimitDbfs: codecPreencodePeakLimitDbfs + gainCorrectionDb,
         normalizedPcm: encoded.result.normalizedLoudness,
         normalizationTruePeakTargetDbtp: encoded.result.normalizationTruePeakTargetDbtp,
         output: encoded.result.outputLoudness,
@@ -360,6 +491,14 @@ export async function processSermon(
       handlingNoise,
       ...(transcription === undefined ? {} : { transcription }),
       warnings: [
+        ...(gainCorrectionDb > 0
+          ? [
+              `Corrected measured codec loudness loss with ${gainCorrectionDb.toFixed(3)} dB calibrated PCM gain; delivery targets unchanged.`,
+            ]
+          : []),
+        ...(resume
+          ? ["Normalization and encoding resumed from a fingerprint-verified lossless premaster."]
+          : []),
         ...(noiseBeforeDenoising.usedFallback || noiseAfterDenoising.usedFallback
           ? [
               "No usable room-tone frames were found for one noise-floor measurement; the conservative fallback was used.",
@@ -385,6 +524,7 @@ export async function processSermon(
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${message}\nWork files preserved: ${workDirectory}`, { cause: error });
   } finally {
+    await rm(encodingLock, { recursive: true, force: true });
     if (completed && !request.keepWorkFiles) {
       await rm(workDirectory, { recursive: true, force: true });
     }

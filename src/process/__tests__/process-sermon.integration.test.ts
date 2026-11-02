@@ -6,7 +6,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execa } from "execa";
 import { z } from "zod";
 import { processRequestSchema } from "../../config/schema.js";
-import { processSermon } from "../process-sermon.js";
+import { processSermon, resumeSermon } from "../process-sermon.js";
+import { captureNoiseProfile } from "../../audio/render.js";
+import { inspectAudioRuntime } from "../../audio/runtime.js";
+import { ExecaCommandRunner } from "../run-command.js";
+import type { CommandRunner } from "../run-command.js";
 
 async function hasFfmpeg(): Promise<boolean> {
   try {
@@ -31,6 +35,45 @@ const ffmpegAvailable = await hasFfmpeg();
 const sayAvailable = process.platform === "darwin" && (await hasCommand("say"));
 const espeakAvailable = await hasCommand("espeak");
 const ttsAvailable = sayAvailable || espeakAvailable;
+
+function codecLossRunner(failAt?: "pcm" | "mp3"): CommandRunner {
+  const actual = new ExecaCommandRunner();
+  let mp3Measurements = 0;
+  return {
+    async run(command, args) {
+      const result = await actual.run(command, args);
+      const stageInput = args[args.indexOf("-i") + 1];
+      if (
+        args.some((arg) => arg.startsWith("loudnorm=")) &&
+        stageInput?.endsWith("07-output.mp3")
+      ) {
+        mp3Measurements++;
+        if (mp3Measurements === 1)
+          return {
+            ...result,
+            stderr: result.stderr
+              .replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-18.17"')
+              .replace(/"input_tp"\s*:\s*"[^"]+"/, '"input_tp":"-3.00"'),
+          };
+        if (failAt === "mp3")
+          return {
+            ...result,
+            stderr: result.stderr.replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-25.00"'),
+          };
+      }
+      if (
+        failAt === "pcm" &&
+        args.some((arg) => arg.startsWith("loudnorm=")) &&
+        stageInput?.endsWith("08-corrected.wav")
+      )
+        return {
+          ...result,
+          stderr: result.stderr.replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-25.00"'),
+        };
+      return result;
+    },
+  };
+}
 
 const qcReportSubsetSchema = z.object({
   handlingNoise: z.array(z.object({ action: z.string() })),
@@ -62,6 +105,23 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
   let input: string;
   let output: string;
   let speechHandlingInput: string;
+
+  it.each([1.09, 2.549, 3])(
+    "captures all 15 noise bands from a %s-second sample",
+    async (durationSeconds) => {
+      const runner = new ExecaCommandRunner();
+      const runtime = await inspectAudioRuntime(runner);
+      const profile = await captureNoiseProfile(
+        input,
+        { startSeconds: 0, endSeconds: durationSeconds, durationSeconds, rmsDb: -50 },
+        -50,
+        runtime,
+        runner,
+      );
+      expect(profile).toHaveLength(15);
+      expect(profile.every(Number.isFinite)).toBe(true);
+    },
+  );
 
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "sermon-integration-"));
@@ -209,6 +269,108 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
         .pick({ handlingNoise: true })
         .parse(JSON.parse(await readFile(result.qcReportPath, "utf8")));
       expect(report.handlingNoise).toContainEqual(expect.objectContaining({ action: "removed" }));
+    },
+    30_000,
+  );
+
+  it("resumes a failed encode without decoding, denoising, or rebuilding edits", async () => {
+    const request = processRequestSchema.parse({
+      artwork,
+      input,
+      output: join(directory, "resumed.mp3"),
+      qcDirectory: directory,
+      metadata: {
+        organization: "Church",
+        preacher: "Alice Smith",
+        sermonSeries: "Series",
+        date: "2026-11-01",
+        scripture: "2 Corinthians 4:1–6",
+      },
+    });
+    const actual = new ExecaCommandRunner();
+    let workDirectory: string | undefined;
+    try {
+      await processSermon(request, {
+        async run(command, args) {
+          if (
+            args.some((arg) => arg.endsWith("05-premaster.wav")) &&
+            args.some((arg) => arg.startsWith("loudnorm="))
+          )
+            throw new Error("Simulated encoding failure");
+          return actual.run(command, args);
+        },
+      });
+    } catch (error) {
+      workDirectory = (error instanceof Error ? error.message : "").match(
+        /Work files preserved: (.+)$/,
+      )?.[1];
+    }
+    expect(workDirectory).toBeDefined();
+    const preserved = workDirectory!;
+    try {
+      await Promise.all(
+        [
+          "01-canonical.wav",
+          "02-denoised.wav",
+          "03-handling-clean.wav",
+          "04-transcript-clean.wav",
+        ].map((file) => rm(join(preserved, file), { force: true })),
+      );
+      const result = await resumeSermon(join(preserved, "encoding-checkpoint.json"));
+      const report = qcReportSubsetSchema.parse(
+        JSON.parse(await readFile(result.qcReportPath, "utf8")),
+      );
+      expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
+      expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+      expect(report.handlingNoise).toContainEqual(expect.objectContaining({ action: "removed" }));
+    } finally {
+      await rm(preserved, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  function codecLossRequest(name: string) {
+    return processRequestSchema.parse({
+      artwork,
+      input,
+      output: join(directory, `${name}.mp3`),
+      qcDirectory: directory,
+      metadata: {
+        organization: "Church",
+        preacher: "Alice Smith",
+        sermonSeries: "Series",
+        date: "2026-11-01",
+        scripture: "2 Corinthians 4:1–6",
+      },
+    });
+  }
+  it("encodes the corrected lossless PCM and reports its verified measurements", async () => {
+    const result = await processSermon(codecLossRequest("codec-correction"), codecLossRunner());
+    const report = qcReportSubsetSchema.parse(
+      JSON.parse(await readFile(result.qcReportPath, "utf8")),
+    );
+    expect(report.processing.encodingAttempts).toBe(2);
+    expect(report.processing.stages).toContainEqual(
+      expect.objectContaining({ stage: "Verify corrected PCM" }),
+    );
+    expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+  }, 30_000);
+  it.each(["pcm", "mp3"] as const)(
+    "preserves diagnostics without delivering audio when corrected %s verification fails",
+    async (failAt) => {
+      const request = codecLossRequest(`failed-correction-${failAt}`);
+      let message = "";
+      try {
+        await processSermon(request, codecLossRunner(failAt));
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toContain("outside the -16 ± 2 LU contract");
+      const work = message.match(/Work files preserved: (.+)$/)?.[1];
+      expect(work).toBeDefined();
+      await expect(access(request.output)).rejects.toThrow("ENOENT");
+      await expect(access(join(work!, "encoding-checkpoint.json"))).resolves.toBeUndefined();
+      await rm(work!, { recursive: true, force: true });
     },
     30_000,
   );
