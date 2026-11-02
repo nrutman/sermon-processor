@@ -40,7 +40,7 @@ export interface QcReport {
       interval: import("../audio/analyze.js").RoomToneInterval;
     };
   };
-  output: VerifiedMp3Output & { path: string };
+  output: VerifiedMp3Output & { path: string; sha256?: string };
   processing: {
     encodingAttempts: number;
     stages: ProcessingStageTiming[];

@@ -45,7 +45,8 @@ export async function captureNoiseProfile(
     "-i",
     input,
     "-af",
-    `asendcmd=c='0 afftdn sn start;${stopSamplingSeconds.toFixed(3)} afftdn sn stop',afftdn=nf=${afftdnNoiseFloorDb.toFixed(1)}`,
+    // Commands run at frame boundaries; short frames ensure stop runs before EOF.
+    `asetnsamples=n=480:p=0,asendcmd=c='0 afftdn sn start;${stopSamplingSeconds.toFixed(3)} afftdn sn stop',afftdn=nf=${afftdnNoiseFloorDb.toFixed(1)}`,
     "-f",
     "null",
     "-",

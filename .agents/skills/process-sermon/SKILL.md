@@ -81,6 +81,20 @@ Never bypass a failed loudness or true-peak check. Do not change the delivery
 target until the preserved normalized PCM and encoded MP3 have been measured
 separately.
 
+After preparation completes, the work directory contains `encoding-checkpoint.json`:
+
+```sh
+pnpm resume <preserved-work-directory>/encoding-checkpoint.json
+```
+
+Resume verifies source, artwork, and premaster SHA-256, retains the original edit
+audit, and never repeats decoding, denoising, VAD, or transcription. It refuses
+to replace an existing MP3, even if the original request used `--overwrite`.
+The pipeline can correct measured codec loudness loss with calibrated PCM gain
+only when both PCM and MP3 peak margins permit it; both stages are re-measured
+and must pass unchanged delivery targets. Do not write ad-hoc recovery scripts.
+Older failed runs without checkpoints are not automatically resumable.
+
 ## Review
 
 Read `.sermon-qc/<output-filename>.qc.json` and report:
