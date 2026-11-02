@@ -9,9 +9,10 @@ import { loadTranscriptionConfig } from "./config/transcription-config.js";
 import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { PlanningCenterClient } from "./planning-center/client.js";
 import { readSermonPlanMetadata } from "./planning-center/sermon-plan.js";
-import { processSermon } from "./process/process-sermon.js";
+import { processSermon, resumeSermon } from "./process/process-sermon.js";
 import { WordPressClient } from "./wordpress/client.js";
 import { publishSermon } from "./wordpress/publish-sermon.js";
+import { registerPublicationCommands } from "./wordpress/publication-cli.js";
 
 interface ProcessCommandOptions {
   artwork: string;
@@ -46,6 +47,19 @@ interface PublishCommandOptions {
 
 export function createProgram(): Command {
   const program = new Command();
+  registerPublicationCommands(program);
+  program
+    .command("resume")
+    .description("Resume normalization/encoding from a verified lossless checkpoint")
+    .argument("<checkpoint>", "encoding-checkpoint.json from a failed process")
+    .action(async (checkpoint: string) => {
+      const result = await resumeSermon(resolve(checkpoint), undefined, (event) =>
+        console.error(
+          `${event.status}: ${event.stage}${event.message ? ` — ${event.message}` : ""}`,
+        ),
+      );
+      console.log(JSON.stringify(result, null, 2));
+    });
   program
     .name("sermon")
     .description("Clean and master AIFF or WAV sermon recordings")

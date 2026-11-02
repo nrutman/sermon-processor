@@ -1,99 +1,88 @@
 ---
 name: publish-sermon
-description: Uploads a verified sermon MP3 to WordPress, creates a complete draft, and publishes it only after explicit approval.
+description: Plans, drafts, verifies, publishes, and cleans up sermon audio using durable WordPress publication receipts.
 compatibility: Requires Node.js 22.12+, 24.x, or 26+, pnpm 12, WordPress sermon REST resources, and Application Password configuration.
 ---
 
 # Publish a sermon to WordPress
 
-## Confirm the inputs
+Use committed CLI commands, not ad-hoc publishing scripts. Never print credentials
+or repair unrelated historical posts. Planning Center/QC values alone are not
+metadata confirmation or publication approval.
 
-Obtain the processed MP3 and its matching `.sermon-qc/*.qc.json` report. Confirm
-the title, preacher, Series, scripture reference, and sermon date with the user.
-Do not infer approval merely because Planning Center or the QC report contains
-the values.
+## 1. Plan (read-only)
 
-Before any mutation, present the intended WordPress payload, including:
-
-- Title and scripture reference
-- Preacher and matched WordPress speaker
-- Matched WordPress Series and artwork attachment
-- Sermon date at exactly `12:00:00` Eastern local time
-- Expected offloaded media host from `WORDPRESS_MEDIA_HOST`
-- Draft or published status
-
-Never print the WordPress username or Application Password. Credentials belong
-only in the gitignored `.env.local` file.
-
-## Run read-only preflight checks
-
-Confirm that the MP3 and QC report exist and that the QC report names the same
-output file and metadata. Use authenticated GET or OPTIONS requests to confirm
-that `sermons`, `sermon-speakers`, and `sermon-series` are available through the
-standard WordPress REST API.
-
-Search all statuses for an existing sermon on the requested date. Stop on a
-duplicate rather than uploading another attachment. Match the Series
-conservatively and reuse artwork from an existing sermon in that Series. For
-the first sermon in a new Series, require an explicitly supplied local JPEG or
-PNG. Never guess when multiple terms are plausible.
-
-## Create a draft
-
-Draft creation is the default:
+Obtain processed MP3, matching QC report, and confirmed metadata:
 
 ```sh
-pnpm publish-sermon <sermon.mp3> \
-  --qc <sermon.qc.json> \
-  --artwork <series-artwork.png> \
-  --preacher "<preacher>" \
-  --series "<series>" \
-  --date <yyyy-mm-dd> \
-  --scripture "<reference>" \
-  --title "<title>"
+pnpm publication plan <sermon.mp3> \
+  --qc .sermon-qc/<sermon.mp3>.qc.json \
+  --receipt .sermon-qc/<sermon.mp3>.publication.json \
+  --preacher "<preacher>" --series "<series>" --date <yyyy-mm-dd> \
+  --scripture "<reference>" --title "<title>"
 ```
 
-Do not add `--publish` unless the user explicitly requests immediate public
-publication. The client uses multipart HTTP/1.1 for compatibility with hosts
-that reject raw REST uploads or HTTP/2 upload streams.
+For a first sermon without existing Series artwork, add `--artwork <local.jpg-or-png>`.
+Existing WordPress speaker and Series terms are required; never guess ambiguous
+terms. Site timezone must be `America/New_York`. Planning refuses duplicate dates
+(including trash) and possible orphan audio attachments.
 
-The publisher must refuse the operation and delete the attachment when
-WordPress does not return an HTTPS media URL whose hostname exactly matches
-`WORDPRESS_MEDIA_HOST`. It must also delete the draft and attachment when
-post-creation verification fails.
+Present plan before remote mutation: title, scripture, preacher/matched speaker,
+Series/artwork ID, exact noon Eastern date, media host, and draft status. Receipts
+pin input/QC/artwork bytes and site configuration. Never overwrite a receipt.
 
-If a request fails, explain the error and intended fix before changing code or
-switching transport. Search WordPress for a partial post or orphaned attachment
-before retrying.
+## 2. Draft and verify
 
-## Verify the draft
-
-Read the draft and attachment back through authenticated REST requests. Verify:
-
-- Status is `draft`
-- Local post date is `<yyyy-mm-dd>T12:00:00`
-- Title, speaker, Series, scripture fields, duration, and button text
-- Featured media is the existing Series artwork
-- Audio metadata equals the uploaded attachment's `source_url`
-- Attachment is associated with the sermon post
-- Offloaded audio URL returns HTTP 200
-- Equivalent local path under `WORDPRESS_URL` returns HTTP 404
-
-Provide the WordPress edit link for review:
-
-```text
-<WORDPRESS_URL>/wp-admin/post.php?post=<post-id>&action=edit
+```sh
+pnpm publication draft <receipt.json>
+pnpm publication verify <receipt.json>
 ```
 
-## Publish only after approval
+Drafting journals mutation intent/results. Verification checks metadata, Series
+artwork, associated audio, HTTPS media host, remote audio SHA-256, and HTTP 404
+for equivalent local upload path. Provide edit link:
+`<WORDPRESS_URL>/wp-admin/post.php?post=<post-id>&action=edit`.
 
-After the user explicitly approves publication, update the existing draft with
-both `status: "publish"` and `date: "<yyyy-mm-dd>T12:00:00"` in the same
-authenticated REST request. Resending the date prevents WordPress from
-substituting the current publication time.
+## 3. Publish only after explicit approval
 
-Verify the resulting status, local date, public permalink, rendered title, and
-offloaded audio URL. The public page and media object must return HTTP 200 while
-the equivalent local upload path remains unavailable.
+```sh
+pnpm publication publish <receipt.json> --approve
+```
 
-Do not repair unrelated historical sermon anomalies during publishing.
+This verifies and updates the existing draft with both published status and
+`<yyyy-mm-dd>T12:00:00`. It never uploads another MP3. Retries verify existing
+publication instead of creating duplicates. Verify public page/title and remote
+audio before declaring success.
+
+## 4. Clean up verified local output
+
+```sh
+pnpm publication cleanup <receipt.json>
+```
+
+User permits routine cleanup after successful publication. Command freshly
+verifies public post, remote bytes, and matching local bytes before deletion.
+Never delete source AIFF/WAV, artwork, QC, receipt, or preserved diagnostics.
+Retain receipt/QC; verification and repeated cleanup still work afterward.
+
+## Interrupted or failed operations
+
+Do not retry uploading, change transport, delete a receipt, or create a new plan
+to bypass an error. Explain failure and intended fix before changing code.
+
+```sh
+pnpm publication reconcile <receipt.json>
+# After inspecting results and explicitly selecting the intended post:
+pnpm publication reconcile <receipt.json> --post-id <id>
+pnpm publication verify <receipt.json>
+```
+
+Reconciliation makes remote GET requests only. Adoption requires explicit post
+selection and complete verification. No automatic orphan deletion. Incomplete
+uploads without usable posts require inspecting journal/attachments before an
+operator decides whether to finish or remove leftovers. Never clean up local
+audio while publication is uncertain.
+
+A `.lock` directory means another process may own the receipt. Verify no process
+is running before removing a stale lock. Keep receipts/runtime artifacts in
+gitignored `.sermon-qc/`; never commit credentials or generated state.

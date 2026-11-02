@@ -10,7 +10,7 @@ import type { WordPressApi } from "./client.js";
 const speakerRestBase = "sermon-speakers";
 const seriesRestBase = "sermon-series";
 
-const termSchema = z.object({
+export const termSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
   slug: z.string(),
@@ -22,7 +22,7 @@ const mediaSchema = z.object({
 const associatedMediaSchema = mediaSchema.extend({
   post: z.number().int().nonnegative(),
 });
-const sermonSchema = z.object({
+export const sermonSchema = z.object({
   date: z.string(),
   featured_media: z.number().int().nonnegative(),
   id: z.number().int().positive(),
@@ -53,6 +53,7 @@ const qcSchema = z.object({
 });
 
 export interface PublishSermonRequest {
+  featuredMediaId?: number;
   artwork?: string;
   input: string;
   mediaHost: string;
@@ -67,7 +68,7 @@ function artworkContentType(path: string): "image/jpeg" | "image/png" {
   return extname(path).toLowerCase() === ".png" ? "image/png" : "image/jpeg";
 }
 
-function verifyUploadedMediaUrl(url: string, expectedHost: string): void {
+export function verifyUploadedMediaUrl(url: string, expectedHost: string): void {
   const parsed = new URL(url);
   if (
     parsed.protocol !== "https:" ||
@@ -170,7 +171,7 @@ export function buildScriptureMeta(scripture: string): Record<string, string> {
   };
 }
 
-async function resolveTerm(
+export async function resolveTerm(
   api: WordPressApi,
   restBase: string,
   name: string,
@@ -180,12 +181,13 @@ async function resolveTerm(
   const terms = z
     .array(termSchema)
     .parse(await api.get(`${restBase}?context=edit&hide_empty=false&per_page=100`));
-  const exact = terms.find(
+  const exact = terms.filter(
     (term) =>
       normalizedTermName(term.name) === normalizedTermName(name) ||
       (options.personName && personNamesMatch(term.name, name)),
   );
-  if (exact !== undefined) return exact;
+  if (exact.length > 1) throw new Error(`Ambiguous WordPress term for ${JSON.stringify(name)}`);
+  if (exact[0] !== undefined) return exact[0];
   const candidates = terms
     .map((term) => ({ score: similarity(term.name, name), term }))
     .toSorted((left, right) => right.score - left.score);
@@ -206,7 +208,7 @@ async function resolveTerm(
   );
 }
 
-async function verifyQcReport(request: PublishSermonRequest): Promise<number> {
+export async function verifyQcReport(request: PublishSermonRequest): Promise<number> {
   await access(request.input, constants.R_OK);
   const qc = qcSchema.parse(JSON.parse(await readFile(request.qcReport, "utf8")));
   if (resolve(qc.output.path) !== resolve(request.input)) {
@@ -219,7 +221,7 @@ async function verifyQcReport(request: PublishSermonRequest): Promise<number> {
   return qc.output.durationSeconds;
 }
 
-function verifySermonReadback(
+export function verifySermonReadback(
   sermon: z.infer<typeof sermonSchema>,
   expected: {
     date: string;
@@ -284,14 +286,28 @@ export async function publishSermon(
       personName: false,
     }),
   ]);
-  const seriesPosts = z
-    .array(sermonSchema)
-    .parse(
-      await api.get(
-        `sermons?context=edit&${seriesRestBase}=${series.id}&orderby=date&order=desc&per_page=20`,
-      ),
-    );
-  let featuredMedia = seriesPosts.find((post) => post.featured_media > 0)?.featured_media;
+  const seriesPosts =
+    request.featuredMediaId === undefined
+      ? z
+          .array(sermonSchema)
+          .parse(
+            await api.get(
+              `sermons?context=edit&${seriesRestBase}=${series.id}&orderby=date&order=desc&per_page=20`,
+            ),
+          )
+      : [];
+  let featuredMedia =
+    request.featuredMediaId ?? seriesPosts.find((post) => post.featured_media > 0)?.featured_media;
+  if (request.featuredMediaId !== undefined) {
+    if (!Number.isSafeInteger(request.featuredMediaId) || request.featuredMediaId < 0)
+      throw new Error("Invalid planned artwork ID");
+    if (request.featuredMediaId > 0) {
+      const art = z
+        .object({ id: z.number() })
+        .parse(await api.get(`media/${request.featuredMediaId}?context=edit`));
+      if (art.id !== request.featuredMediaId) throw new Error("Planned artwork attachment changed");
+    }
+  }
   if (!featuredMedia && !request.artwork) {
     throw new Error(
       `No existing sermon in ${request.metadata.sermonSeries} has Series artwork to reuse; pass --artwork for the first sermon`,
