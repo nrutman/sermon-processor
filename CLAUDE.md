@@ -34,6 +34,20 @@ and `minimumReleaseAgeStrict: true` in `pnpm-workspace.yaml`.
 - Verify the final codec, bitrate, channels, loudness, and metadata rather than
   trusting the render command.
 - Record derived thresholds, tool versions, edits, and warnings in the QC report.
+- Recover final encoding failures with `pnpm resume <encoding-checkpoint.json>`;
+  never rerun source cleanup solely to experiment with encoding.
+
+## Weekly publication
+
+Use `pnpm publication plan`, `draft`, `verify`, `publish --approve`, and `cleanup`
+with a gitignored publication receipt. Follow `.agents/skills/publish-sermon/SKILL.md`.
+Do not create ad-hoc scripts for routine publishing. Present the read-only plan
+before mutation and require explicit publication approval. Reconcile uncertain
+remote state before any retry; never blindly upload again.
+
+After verified publication, clean up the matching local processed MP3 using
+`pnpm publication cleanup <receipt>`. User permits routine post-publication cleanup.
+Never remove source recordings, QC reports, receipts, or diagnostic stages.
 
 ## Architecture
 

@@ -111,6 +111,55 @@ substitutes a model.
 
 ## WordPress publishing
 
+### Weekly workflow
+
+```sh
+pnpm publication plan ~/Downloads/SERMON-2026-08-23-Parker.mp3 \
+  --qc .sermon-qc/SERMON-2026-08-23-Parker.mp3.qc.json \
+  --receipt .sermon-qc/SERMON-2026-08-23-Parker.publication.json \
+  --preacher "Alex Parker" --series "Example Series" --date 2026-08-23 \
+  --scripture "Matthew 5:1–12" --title "Sample Sermon"
+pnpm publication draft .sermon-qc/SERMON-2026-08-23-Parker.publication.json
+pnpm publication verify .sermon-qc/SERMON-2026-08-23-Parker.publication.json
+# Only after explicit publication approval:
+pnpm publication publish .sermon-qc/SERMON-2026-08-23-Parker.publication.json --approve
+pnpm publication cleanup .sermon-qc/SERMON-2026-08-23-Parker.publication.json
+```
+
+Planning makes no remote mutations. It displays mapped speaker/Series/artwork,
+checks the site's `America/New_York` timezone, duplicate dates (including trash),
+possible orphan media, and QC. Existing WordPress speaker and Series terms are
+required. Supply `--artwork <local.jpg-or-png>` when the Series has no reusable image.
+Review the plan before creating a draft.
+
+New QC reports include the verified MP3's SHA-256; receipt-based planning requires
+this fingerprint and refuses audio changed since QC. Legacy reports without a
+fingerprint require re-verification through supported processing, not a manually
+inserted hash.
+
+Receipts pin local file hashes and journal remote mutations without credentials.
+Verification checks metadata, audio association, HTTPS storage host, complete
+remote audio hash, and an unavailable local upload path. Publishing updates the
+same verified draft at noon Eastern and verifies its public page/title. Retrying
+publication never uploads again. Cleanup verifies publication again, removes only
+the matching local processed MP3, and retains source recordings, artwork, QC, and
+receipts. Verification remains available after cleanup.
+
+After failure, run `pnpm publication reconcile <receipt>` to inspect posts,
+attachments, and journal without remote changes. Adopt a selected, fully verified
+post with `--post-id <id>`. Never delete a receipt or make another plan to bypass
+uncertain uploads; orphan attachments require operator review. Remove a receipt
+lock only after confirming its owning process stopped.
+
+For encoding failures, use `pnpm resume <work-directory>/encoding-checkpoint.json`.
+Checkpoints pin source, artwork, lossless premaster, edit audit, and original
+preparation timings. Resume never repeats source cleanup or overwrites an MP3.
+Bounded PCM gain can correct measured codec loudness loss when both peak margins
+allow it; original delivery targets remain enforced. Older failed runs without
+checkpoints are not automatically resumable.
+
+### Configuration and legacy command
+
 Configure the active WordPress theme or plugin to expose the `ct_sermon`,
 `sermon_speaker`, and `sermon_series` resources through the standard REST API.
 Then add an Application Password and the site's offloaded media host to
