@@ -17,6 +17,8 @@ import {
   encodeMp3,
   normalizePremaster,
   repairAndDenoise,
+  renderPcmGain,
+  renormalizePcm,
 } from "../audio/render.js";
 import { inspectAudioRuntime } from "../audio/runtime.js";
 import { transcribeAndShortenGaps } from "../audio/transcription.js";
@@ -36,7 +38,7 @@ import {
   type ProcessingCheckpoint,
   hashFile,
 } from "./checkpoint.js";
-import { planCodecGain } from "../audio/codec-gain.js";
+import { InsufficientPcmGainMarginError, planCodecGain, planPcmGain } from "../audio/codec-gain.js";
 
 export interface ProcessResult {
   outputPath: string;
@@ -68,7 +70,11 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function withAdaptiveCodecHeadroom<
-  Result extends { outputLoudnessLufs: number; outputTruePeakDbtp: number },
+  Result extends {
+    outputLoudnessLufs: number;
+    outputTruePeakDbtp: number;
+    gainCorrectionDb?: number;
+  },
 >(
   renderAttempt: (codecHeadroomDb: number, attempt: number) => Promise<Result>,
   minimumOutputLufs: number,
@@ -92,7 +98,12 @@ async function withAdaptiveCodecHeadroom<
       return { attempts: attempt, result };
     }
     const additionalHeadroomDb = truePeakOvershootDb + retrySafetyMarginDb;
-    if (result.outputLoudnessLufs - additionalHeadroomDb < minimumOutputLufs) {
+    // A fresh normalization can change codec gain and gating; do not model a
+    // corrected encode as simple attenuation. Every retry still passes full QC.
+    if (
+      result.outputLoudnessLufs - additionalHeadroomDb < minimumOutputLufs &&
+      !(result.gainCorrectionDb !== undefined && result.gainCorrectionDb > 0)
+    ) {
       reportProgress({
         stage: "Skip final retry",
         status: "completed",
@@ -310,6 +321,7 @@ async function executeSermon(
         preparationDurationSeconds + (performance.now() - processingStartedAt) / 1_000,
     });
     const metadata = buildMp3Metadata(request.metadata);
+    let encodingAttempts = 0;
     const encoded = await withAdaptiveCodecHeadroom(
       async (codecHeadroomDb, attempt) => {
         const attemptSuffix = attempt === 1 ? "" : ` (attempt ${attempt})`;
@@ -340,7 +352,7 @@ async function executeSermon(
             runner,
           ),
         );
-        const normalizedLoudness = await runStage(`Verify normalized PCM${attemptSuffix}`, () =>
+        let normalizedLoudness = await runStage(`Verify normalized PCM${attemptSuffix}`, () =>
           measureLoudness(
             normalizedPath,
             {
@@ -352,6 +364,82 @@ async function executeSermon(
             runner,
           ),
         );
+        let pcmGainDb = 0;
+        let pcmRenormalized = false;
+        try {
+          pcmGainDb = planPcmGain(normalizedLoudness, {
+            lufs: request.processing.targetLufs,
+            truePeak: normalizationTruePeakTargetDbtp,
+          });
+        } catch (error) {
+          if (!(error instanceof InsufficientPcmGainMarginError)) throw error;
+          // Downstream limiting can lower loudness without leaving room for linear gain.
+          // FFmpeg's dynamic normalizer can reshape peaks instead of exceeding the ceiling.
+          const recoveredPath = join(workDirectory, "06-renormalized.wav");
+          await runStage(`Renormalize peak-constrained PCM${attemptSuffix}`, () =>
+            renormalizePcm(
+              normalizedPath,
+              recoveredPath,
+              normalizedLoudness,
+              request.processing,
+              normalizationTruePeakTargetDbtp,
+              runtime,
+              runner,
+            ),
+          );
+          normalizedLoudness = await runStage(`Verify renormalized PCM${attemptSuffix}`, () =>
+            measureLoudness(
+              recoveredPath,
+              {
+                lufs: request.processing.targetLufs,
+                lra: request.processing.targetLra,
+                truePeak: normalizationTruePeakTargetDbtp,
+              },
+              runtime,
+              runner,
+            ),
+          );
+          verifyOutputLoudness(
+            normalizedLoudness,
+            {
+              lufs: request.processing.targetLufs,
+              truePeak: normalizationTruePeakTargetDbtp,
+            },
+            normalizedPcmTruePeakToleranceDb,
+          );
+          await rename(recoveredPath, normalizedPath);
+          pcmRenormalized = true;
+        }
+        if (pcmGainDb > 0) {
+          const correctedPath = join(workDirectory, "06-corrected.wav");
+          // Loudnorm plus downstream limiting can undershoot; correct only measured spare headroom.
+          await runStage(`Correct normalized PCM loudness${attemptSuffix}`, () =>
+            renderPcmGain(normalizedPath, correctedPath, pcmGainDb, runtime, runner),
+          );
+          normalizedLoudness = await runStage(
+            `Verify corrected normalized PCM${attemptSuffix}`,
+            () =>
+              measureLoudness(
+                correctedPath,
+                {
+                  lufs: request.processing.targetLufs,
+                  lra: request.processing.targetLra,
+                  truePeak: normalizationTruePeakTargetDbtp,
+                },
+                runtime,
+                runner,
+              ),
+          );
+          verifyOutputLoudness(
+            normalizedLoudness,
+            {
+              lufs: request.processing.targetLufs,
+              truePeak: normalizationTruePeakTargetDbtp,
+            },
+            normalizedPcmTruePeakToleranceDb,
+          );
+          await rename(correctedPath, normalizedPath);
+        }
         verifyOutputLoudness(
           normalizedLoudness,
           {
@@ -363,7 +451,8 @@ async function executeSermon(
         await runStage(`Encode MP3${attemptSuffix}`, () =>
           encodeMp3(normalizedPath, encodedPath, request.artwork, metadata, runtime, runner),
         );
-        const outputLoudness = await runStage(`Measure MP3${attemptSuffix}`, () =>
+        encodingAttempts++;
+        let outputLoudness = await runStage(`Measure MP3${attemptSuffix}`, () =>
           measureLoudness(
             encodedPath,
             {
@@ -375,7 +464,57 @@ async function executeSermon(
             runner,
           ),
         );
+        const gainCorrectionDb = planCodecGain(normalizedLoudness, outputLoudness, {
+          lufs: request.processing.targetLufs,
+          truePeak: request.processing.truePeakDbtp,
+          pcmTruePeak: normalizationTruePeakTargetDbtp,
+        });
+        if (gainCorrectionDb > 0) {
+          const correctedPath = join(workDirectory, "08-corrected.wav");
+          await runStage("Correct measured codec loudness loss", () =>
+            renderPcmGain(normalizedPath, correctedPath, gainCorrectionDb, runtime, runner),
+          );
+          normalizedLoudness = await runStage("Verify corrected PCM", () =>
+            measureLoudness(
+              correctedPath,
+              {
+                lufs: request.processing.targetLufs,
+                lra: request.processing.targetLra,
+                truePeak: normalizationTruePeakTargetDbtp,
+              },
+              runtime,
+              runner,
+            ),
+          );
+          verifyOutputLoudness(
+            normalizedLoudness,
+            {
+              lufs: request.processing.targetLufs,
+              truePeak: normalizationTruePeakTargetDbtp,
+            },
+            normalizedPcmTruePeakToleranceDb,
+          );
+          await runStage("Encode corrected MP3", () =>
+            encodeMp3(correctedPath, encodedPath, request.artwork, metadata, runtime, runner),
+          );
+          encodingAttempts++;
+          outputLoudness = await runStage("Measure corrected MP3", () =>
+            measureLoudness(
+              encodedPath,
+              {
+                lufs: request.processing.targetLufs,
+                lra: request.processing.targetLra,
+                truePeak: request.processing.truePeakDbtp,
+              },
+              runtime,
+              runner,
+            ),
+          );
+        }
         return {
+          pcmRenormalized,
+          gainCorrectionDb,
+          pcmGainDb,
           loudnessBeforeNormalization,
           normalizationTruePeakTargetDbtp,
           normalizedLoudness,
@@ -388,69 +527,7 @@ async function executeSermon(
       request.processing.truePeakDbtp,
       reportProgress,
     );
-    const gainCorrectionDb = planCodecGain(
-      encoded.result.normalizedLoudness,
-      encoded.result.outputLoudness,
-      {
-        lufs: request.processing.targetLufs,
-        truePeak: request.processing.truePeakDbtp,
-        pcmTruePeak: encoded.result.normalizationTruePeakTargetDbtp,
-      },
-    );
-    if (gainCorrectionDb > 0) {
-      const correctedPath = join(workDirectory, "08-corrected.wav");
-      await runStage("Correct measured codec loudness loss", () =>
-        runner.run(runtime.ffmpegPath, [
-          "-hide_banner",
-          "-nostdin",
-          "-y",
-          "-i",
-          normalizedPath,
-          "-af",
-          `volume=${gainCorrectionDb.toFixed(6)}dB`,
-          "-c:a",
-          "pcm_s24le",
-          correctedPath,
-        ]),
-      );
-      const correctedPcm = await runStage("Verify corrected PCM", () =>
-        measureLoudness(
-          correctedPath,
-          {
-            lufs: request.processing.targetLufs,
-            lra: request.processing.targetLra,
-            truePeak: encoded.result.normalizationTruePeakTargetDbtp,
-          },
-          runtime,
-          runner,
-        ),
-      );
-      verifyOutputLoudness(
-        correctedPcm,
-        {
-          lufs: request.processing.targetLufs,
-          truePeak: encoded.result.normalizationTruePeakTargetDbtp,
-        },
-        normalizedPcmTruePeakToleranceDb,
-      );
-      await runStage("Encode corrected MP3", () =>
-        encodeMp3(correctedPath, encodedPath, request.artwork, metadata, runtime, runner),
-      );
-      encoded.result.normalizedLoudness = correctedPcm;
-      encoded.result.outputLoudness = await runStage("Measure corrected MP3", () =>
-        measureLoudness(
-          encodedPath,
-          {
-            lufs: request.processing.targetLufs,
-            lra: request.processing.targetLra,
-            truePeak: request.processing.truePeakDbtp,
-          },
-          runtime,
-          runner,
-        ),
-      );
-      encoded.attempts++;
-    }
+    const gainCorrectionDb = encoded.result.gainCorrectionDb;
     verifyOutputLoudness(encoded.result.outputLoudness, {
       lufs: request.processing.targetLufs,
       truePeak: request.processing.truePeakDbtp,
@@ -467,7 +544,7 @@ async function executeSermon(
       input: { path: request.input, ...inputProbe },
       output: { path: request.output, sha256: await hashFile(request.output), ...outputTechnical },
       processing: {
-        encodingAttempts: encoded.attempts,
+        encodingAttempts,
         stages: stageTimings,
         totalDurationSeconds:
           preparationDurationSeconds + (performance.now() - processingStartedAt) / 1_000,
@@ -483,7 +560,8 @@ async function executeSermon(
       },
       loudness: {
         beforeNormalization: encoded.result.loudnessBeforeNormalization,
-        codecPreencodePeakLimitDbfs: codecPreencodePeakLimitDbfs + gainCorrectionDb,
+        codecPreencodePeakLimitDbfs:
+          codecPreencodePeakLimitDbfs + encoded.result.pcmGainDb + gainCorrectionDb,
         normalizedPcm: encoded.result.normalizedLoudness,
         normalizationTruePeakTargetDbtp: encoded.result.normalizationTruePeakTargetDbtp,
         output: encoded.result.outputLoudness,
@@ -491,6 +569,16 @@ async function executeSermon(
       handlingNoise,
       ...(transcription === undefined ? {} : { transcription }),
       warnings: [
+        ...(encoded.result.pcmRenormalized
+          ? [
+              "Normalized PCM had insufficient linear-gain peak margin; recovered with FFmpeg dynamic normalization and independent verification; delivery targets unchanged.",
+            ]
+          : []),
+        ...(encoded.result.pcmGainDb > 0
+          ? [
+              `Corrected normalized PCM loudness undershoot with ${encoded.result.pcmGainDb.toFixed(3)} dB calibrated gain; delivery targets unchanged.`,
+            ]
+          : []),
         ...(gainCorrectionDb > 0
           ? [
               `Corrected measured codec loudness loss with ${gainCorrectionDb.toFixed(3)} dB calibrated PCM gain; delivery targets unchanged.`,

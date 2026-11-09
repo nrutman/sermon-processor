@@ -52,13 +52,12 @@ const qcSchema = z.object({
   }),
 });
 
-export interface PublishSermonRequest {
+export interface DraftSermonRequest {
   featuredMediaId?: number;
   artwork?: string;
   input: string;
   mediaHost: string;
   metadata: SermonMetadata;
-  publish: boolean;
   qcReport: string;
   wordpressScripture?: string;
 }
@@ -80,7 +79,7 @@ export function verifyUploadedMediaUrl(url: string, expectedHost: string): void 
   }
 }
 
-export interface PublishSermonResult {
+export interface DraftSermonResult {
   mediaId: number;
   mediaUrl: string;
   postId: number;
@@ -175,9 +174,8 @@ export async function resolveTerm(
   api: WordPressApi,
   restBase: string,
   name: string,
-  options: { createIfMissing: boolean; personName: boolean },
+  options: { personName: boolean },
 ): Promise<z.infer<typeof termSchema>> {
-  const slug = termSlug(name);
   const terms = z
     .array(termSchema)
     .parse(await api.get(`${restBase}?context=edit&hide_empty=false&per_page=100`));
@@ -196,19 +194,16 @@ export async function resolveTerm(
   if (first !== undefined && first.score >= 0.82 && first.score - (second?.score ?? 0) >= 0.1) {
     return first.term;
   }
-  if (options.createIfMissing) {
-    return termSchema.parse(await api.post(restBase, { name, slug }));
-  }
   const suggestions = candidates
     .slice(0, 3)
     .map(({ score, term }) => `${term.name} (${score.toFixed(2)})`)
     .join(", ");
   throw new Error(
-    `No confident WordPress Series match for ${JSON.stringify(name)}${suggestions ? `; closest: ${suggestions}` : ""}`,
+    `No confident WordPress ${options.personName ? "speaker" : "Series"} match for ${JSON.stringify(name)}${suggestions ? `; closest: ${suggestions}` : ""}`,
   );
 }
 
-export async function verifyQcReport(request: PublishSermonRequest): Promise<number> {
+export async function verifyQcReport(request: DraftSermonRequest): Promise<number> {
   await access(request.input, constants.R_OK);
   const qc = qcSchema.parse(JSON.parse(await readFile(request.qcReport, "utf8")));
   if (resolve(qc.output.path) !== resolve(request.input)) {
@@ -254,10 +249,10 @@ export function verifySermonReadback(
   }
 }
 
-export async function publishSermon(
-  request: PublishSermonRequest,
+export async function createSermonDraft(
+  request: DraftSermonRequest,
   api: WordPressApi,
-): Promise<PublishSermonResult> {
+): Promise<DraftSermonResult> {
   const durationSeconds = await verifyQcReport({
     ...request,
     input: resolve(request.input),
@@ -278,11 +273,9 @@ export async function publishSermon(
 
   const [speaker, series] = await Promise.all([
     resolveTerm(api, speakerRestBase, request.metadata.preacher, {
-      createIfMissing: true,
       personName: true,
     }),
     resolveTerm(api, seriesRestBase, request.metadata.sermonSeries, {
-      createIfMissing: false,
       personName: false,
     }),
   ]);
@@ -345,7 +338,7 @@ export async function publishSermon(
       ...buildScriptureMeta(request.wordpressScripture ?? request.metadata.scripture),
     };
     const title = request.metadata.title ?? request.metadata.scripture;
-    const status = request.publish ? "publish" : "draft";
+    const status = "draft";
     const date = `${request.metadata.date}T12:00:00`;
     const created = sermonSchema.parse(
       await api.post("sermons", {
@@ -405,7 +398,7 @@ export async function publishSermon(
   }
 }
 
-export const publishSermonInternals = {
+export const draftSermonInternals = {
   formatDuration,
   nextDate,
   normalizedTermName,

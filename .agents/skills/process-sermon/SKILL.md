@@ -6,41 +6,37 @@ compatibility: Requires Node.js 22.12+, 24.x, or 26+, pnpm 12, FFmpeg, and FFpro
 
 # Process a sermon recording
 
-## Gather metadata
+## 1. Find source and confirm metadata
 
-Obtain the AIFF or WAV path and ISO sermon date. When Planning Center configuration is
-available, first run:
+- Search `~/Library/CloudStorage/Dropbox/Sermons` for the requested sermon date.
+- Use `~/Dropbox/Sermons` on legacy Dropbox installations.
+- Obtain an AIFF/PCM WAV path and ISO date; ask if missing or ambiguous.
+- Never substitute another date's recording.
+
+When Planning Center is configured:
 
 ```sh
 pnpm plan-metadata --date <yyyy-mm-dd> --json
 ```
 
-Present the inferred preacher, sermon series, scripture reference, title, and
-artwork to the user for confirmation before processing. Never treat inferred
-metadata as confirmed merely because it came from the service plan.
+| Field                                       | Confirmation rule                                                                                                                              |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preacher, Series, scripture, title, artwork | Present inferred values and obtain user confirmation before processing. Services metadata is not approval.                                     |
+| Missing metadata                            | Ask for preacher, Series, main scripture, and JPEG/PNG artwork. Ask for a title only if it should differ from scripture.                       |
+| Artwork URL                                 | Download with `curl -fL`, verify JPEG/PNG with `file`, then pass a local path. Never infer/reuse another Series' artwork without confirmation. |
 
-When Planning Center is unavailable or leaves a field blank, obtain the
-preacher, sermon series, main scripture reference, and JPEG or PNG album
-artwork as a local path or URL. Ask for a title only when it should differ from
-the scripture reference.
+## 2. Verify project
 
-When artwork is supplied as a URL or returned by Planning Center, download it
-with `curl -fL`, confirm that
-`file` identifies it as JPEG or PNG, and pass the local file to the CLI. Do not
-infer or reuse artwork from another series without confirmation.
-
-## Verify the project
-
-From the repository root, run:
+Run from repository root:
 
 ```sh
 pnpm install
 pnpm check
 ```
 
-If FFmpeg is unavailable on macOS, ask before running `brew install ffmpeg`.
+Ask before installing missing FFmpeg with `brew install ffmpeg` on macOS.
 
-## Process
+## 3. Process
 
 ```sh
 pnpm process <input.aiff-or-wav> \
@@ -51,74 +47,70 @@ pnpm process <input.aiff-or-wav> \
   --artwork "<artwork.jpg-or-png>"
 ```
 
-Never add `--overwrite` without confirming that replacing the existing MP3 is
-intended. Never modify the source recording.
+- Add `--title "<title>"` when confirmed title differs from scripture.
+- Never modify source or add `--overwrite` without confirming replacement.
+- Use `.env.local` output settings unless `--output` is supplied.
+- Never commit `.env.local`; `.env` documents supported variables.
 
-Unless `--output` is supplied, use the output variables from `.env.local`.
-Never commit `.env.local`; `.env` documents the required variable names.
+### Processing guarantees
 
-The pipeline normalizes a lossless PCM master before encoding. It reserves 2.8
-dB of codec headroom below the configured final true-peak ceiling, verifies the
-PCM master, encodes the MP3 without additional DSP, and then verifies the MP3.
-If codec overshoot still exceeds the ceiling, it retries only normalization and
-encoding from the lossless premaster when the output has enough loudness margin
-for the additional measured headroom.
-Before level-changing processing, it selects a speech-free room-tone interval,
-captures a 15-band FFmpeg noise profile, and applies that profile across the
-recording. It then re-measures the denoised noise floor and derives a separate,
-more permissive threshold for shortening long non-speech pauses.
+| Area           | Behavior                                                                                                                                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Denoising      | Sample speech-free room tone before level changes; apply 15-band FFmpeg profile; remeasure noise and derive separate analysis/pause thresholds.                                                                                  |
+| PCM mastering  | Normalize lossless PCM with initial 2.8 dB codec headroom; independently verify before MP3 encoding.                                                                                                                             |
+| PCM undershoot | Apply bounded gain if measured peak margin permits; otherwise use measured dynamic normalization. Verify recovered PCM and record warnings.                                                                                      |
+| MP3 encoding   | Encode without additional DSP; independently verify MP3 loudness, peak, technical properties, and metadata.                                                                                                                      |
+| Codec recovery | Correct codec loudness loss only within both measured peak margins. Retry normalization/encoding from premaster for eligible peak overshoot. Gain-corrected encodes may retry despite insufficient predicted attenuation margin. |
+| Delivery       | All output must pass unchanged loudness and true-peak checks.                                                                                                                                                                    |
 
-## Handle failures
+See [pipeline guide](../../../docs/processing-pipeline.md) for defaults and stage details.
 
-The CLI preserves its work directory automatically when any processing or QC
-step fails. Report that directory and inspect the numbered stage files before
-retrying. In particular, compare `04-transcript-clean.wav`, `05-premaster.wav`,
-`06-normalized.wav`, and `07-output.mp3` to identify whether a failure came from
-semantic gap shortening, normalization, resampling, or lossy encoding. Do not
-rerun the complete source pipeline merely to experiment with the final encode.
+## 4. Handle failures
 
-Never bypass a failed loudness or true-peak check. Do not change the delivery
-target until the preserved normalized PCM and encoded MP3 have been measured
-separately.
+1. Report preserved work directory and exact failed check.
+2. Inspect available stage files below; distinguish edits, normalization, resampling, and codec loss.
+3. Measure normalized PCM and MP3 separately before considering any delivery-target change.
+4. Resume through the checkpoint; never rerun cleanup solely to experiment with encoding.
 
-After preparation completes, the work directory contains `encoding-checkpoint.json`:
+| File                                       | Inspect for                           |
+| ------------------------------------------ | ------------------------------------- |
+| `04-transcript-clean.wav`                  | Semantic gap shortening               |
+| `05-premaster.wav`                         | Pacing, leveling, compression         |
+| `06-normalized.wav`                        | PCM normalization/resampling          |
+| `06-corrected.wav` / `06-renormalized.wav` | PCM recovery, if not already promoted |
+| `08-corrected.wav`                         | Codec-loss PCM gain, when present     |
+| `07-output.mp3`                            | Lossy encoding effects, when present  |
+
+After preparation, work directory contains `encoding-checkpoint.json`:
 
 ```sh
 pnpm resume <preserved-work-directory>/encoding-checkpoint.json
 ```
 
-Resume verifies source, artwork, and premaster SHA-256, retains the original edit
-audit, and never repeats decoding, denoising, VAD, or transcription. It refuses
-to replace an existing MP3, even if the original request used `--overwrite`.
-The pipeline can correct measured codec loudness loss with calibrated PCM gain
-only when both PCM and MP3 peak margins permit it; both stages are re-measured
-and must pass unchanged delivery targets. Do not write ad-hoc recovery scripts.
-Older failed runs without checkpoints are not automatically resumable.
+- Resume verifies source, artwork, and premaster SHA-256; retains original edit audit.
+- It never repeats decoding, denoising, VAD, or transcription.
+- It refuses existing MP3s even if original request used `--overwrite`.
+- Both recovered PCM and MP3 are remeasured against unchanged delivery targets.
+- Never bypass failed QC or write ad-hoc recovery scripts.
+- Older failed runs without checkpoints are not automatically resumable.
 
-## Review
+## 5. Review QC
 
-Read `.sermon-qc/<output-filename>.qc.json` and report:
+Read `.sermon-qc/<output-filename>.qc.json`. Report:
 
-- Output path and duration
-- Measured output loudness and true peak
-- Measured normalized-PCM loudness and true peak, plus its codec-headroom target
-- Actual file size compared with the size implied by 64 kbps and the duration
-- Embedded album artwork presence, MIME type, and byte size
-- Pre- and post-denoise noise floors, the sampled room-tone interval, and both
-  the conservative analysis threshold and pause-shortening threshold
-- Every removed microphone-handling event with timestamp and confidence
-- Every report-only event that may need listening review
-- Every transcription gap that was shortened or reported, including any Whisper
-  or VAD disagreement
-- Any warnings
+| Category       | Required details                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| Delivery       | Output path, duration, measured loudness and true peak                                                 |
+| PCM            | Measured normalized-PCM loudness/peak and codec-headroom target                                        |
+| Size           | Actual bytes versus `durationSeconds × 8,000` bytes plus small metadata/container overhead             |
+| Artwork        | Embedded presence, MIME type, byte size                                                                |
+| Denoising      | Pre/post noise floors, room-tone interval, conservative analysis threshold, pause-shortening threshold |
+| Handling noise | Every removed event with timestamp/confidence; every report-only event needing listening review        |
+| Transcription  | Every shortened/reported gap, including Whisper/VAD disagreements                                      |
+| Warnings       | All warnings and recovery actions                                                                      |
 
-When an event is ambiguous, do not suggest lowering the global confidence
-threshold until the recording has been reviewed around that timestamp.
-
-At 64 kbps, expected payload size is approximately `durationSeconds × 8,000`
-bytes, plus small metadata/container overhead. Treat a material discrepancy as
-an encoding-verification failure rather than accepting the file based only on
-its extension.
-
-QC reports remain in the gitignored `.sermon-qc/` project directory so they can
-be analyzed across past processing runs without cluttering the MP3 destination.
+- For large event lists, give a concise summary and linked, readable audit containing **every** event; do not omit entries.
+- Listen around ambiguous events before suggesting a lower global confidence threshold.
+- Treat material size mismatch as encoding-verification failure, not a valid MP3 based on extension.
+- Keep QC in gitignored `.sermon-qc/`, separate from MP3 destination.
+- Do not claim listening review from automated QC alone.

@@ -4,14 +4,11 @@ import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { buildConfiguredOutputPath, loadSermonConfig } from "./config/output-config.js";
 import { loadPlanningCenterConfig } from "./config/planning-center-config.js";
-import { loadWordPressConfig } from "./config/wordpress-config.js";
 import { loadTranscriptionConfig } from "./config/transcription-config.js";
 import { processRequestSchema, sermonMetadataSchema } from "./config/schema.js";
 import { PlanningCenterClient } from "./planning-center/client.js";
 import { readSermonPlanMetadata } from "./planning-center/sermon-plan.js";
 import { processSermon, resumeSermon } from "./process/process-sermon.js";
-import { WordPressClient } from "./wordpress/client.js";
-import { publishSermon } from "./wordpress/publish-sermon.js";
 import { registerPublicationCommands } from "./wordpress/publication-cli.js";
 
 interface ProcessCommandOptions {
@@ -31,18 +28,6 @@ interface PlanMetadataCommandOptions {
   json: boolean;
   planId?: string;
   serviceType?: string;
-}
-
-interface PublishCommandOptions {
-  artwork?: string;
-  date: string;
-  preacher: string;
-  publish: boolean;
-  qc: string;
-  scripture: string;
-  series: string;
-  title?: string;
-  wordpressScripture?: string;
 }
 
 export function createProgram(): Command {
@@ -160,51 +145,6 @@ export function createProgram(): Command {
       if (result.workDirectory !== undefined) {
         console.log(`Work files: ${result.workDirectory}`);
       }
-    });
-
-  program
-    .command("publish")
-    .description("Upload a verified MP3 and create a WordPress sermon")
-    .argument("<input>", "verified MP3 output")
-    .requiredOption("--qc <path>", "QC report created with the MP3")
-    .requiredOption("--preacher <name>", "preacher/speaker name")
-    .requiredOption("--series <name>", "sermon series")
-    .requiredOption("--date <yyyy-mm-dd>", "sermon date")
-    .requiredOption("--scripture <reference>", "main preaching text")
-    .option(
-      "--wordpress-scripture <reference>",
-      "simplified WordPress scripture range; defaults to the MP3 scripture reference",
-    )
-    .option("--artwork <path>", "Series artwork for its first WordPress sermon")
-    .option("--title <title>", "sermon title; defaults to the scripture reference")
-    .option("--publish", "publish immediately instead of creating a draft", false)
-    .action(async (input: string, options: PublishCommandOptions) => {
-      const sermonConfig = await loadSermonConfig();
-      const wordpressConfig = await loadWordPressConfig();
-      const metadata = sermonMetadataSchema.parse({
-        organization: sermonConfig.organization,
-        preacher: options.preacher,
-        sermonSeries: options.series,
-        date: options.date,
-        scripture: options.scripture,
-        title: options.title,
-      });
-      const result = await publishSermon(
-        {
-          ...(options.artwork ? { artwork: options.artwork } : {}),
-          input,
-          mediaHost: wordpressConfig.mediaHost,
-          metadata,
-          publish: options.publish,
-          qcReport: options.qc,
-          ...(options.wordpressScripture ? { wordpressScripture: options.wordpressScripture } : {}),
-        },
-        new WordPressClient(wordpressConfig),
-      );
-      console.log(
-        `${result.postStatus === "publish" ? "Published" : "Created draft"} WordPress sermon ${result.postId}: ${result.postUrl}`,
-      );
-      console.log(`Uploaded media ${result.mediaId}: ${result.mediaUrl}`);
     });
 
   return program;

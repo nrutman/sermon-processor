@@ -6,10 +6,10 @@ import { buildMp3Metadata } from "../../metadata/sermon-metadata.js";
 import type { WordPressApi } from "../client.js";
 import {
   buildScriptureMeta,
-  publishSermon,
-  publishSermonInternals,
-  type PublishSermonRequest,
-} from "../publish-sermon.js";
+  createSermonDraft,
+  draftSermonInternals,
+  type DraftSermonRequest,
+} from "../draft-sermon.js";
 
 const metadata = {
   organization: "Example Church",
@@ -20,7 +20,7 @@ const metadata = {
   title: "Sample Sermon",
 };
 
-let request: PublishSermonRequest;
+let request: DraftSermonRequest;
 const mediaUrl = "https://media.example.org/wp-content/uploads/sermon.mp3";
 const verifiedMeta = {
   _ct_sm_audio_button_text: "Download Audio",
@@ -59,7 +59,6 @@ beforeEach(async () => {
     input,
     mediaHost: "media.example.org",
     metadata,
-    publish: false,
     qcReport,
   };
   await writeQcReport();
@@ -82,6 +81,7 @@ function sermon(overrides: Record<string, unknown> = {}): Record<string, unknown
 
 interface ApiOptions {
   postError?: Error;
+  speakerTerms?: unknown[];
   seriesPosts?: unknown[];
   seriesTerms?: unknown[];
   verifiedMedia?: Record<string, unknown>;
@@ -92,7 +92,8 @@ function createApi(options: ApiOptions = {}) {
   let createdSermon: Record<string, unknown> | undefined;
   const get = vi.fn<(path: string) => Promise<unknown>>(async (path) => {
     if (path.startsWith("sermons?context=edit&status=any")) return [];
-    if (path.startsWith("sermon-speakers?")) return [];
+    if (path.startsWith("sermon-speakers?"))
+      return options.speakerTerms ?? [{ id: 10, name: "Alice Smith", slug: "alice-smith" }];
     if (path.startsWith("sermon-series?context=edit&hide_empty=")) {
       return options.seriesTerms ?? [{ id: 20, name: "Example Series", slug: "example-series" }];
     }
@@ -108,9 +109,6 @@ function createApi(options: ApiOptions = {}) {
     throw new Error(`Unexpected GET ${path}`);
   });
   const post = vi.fn<(path: string, body: unknown) => Promise<unknown>>(async (path, body) => {
-    if (path === "sermon-speakers") {
-      return { id: 10, name: "Alice Smith", slug: "alice-smith" };
-    }
     if (path === "media/50") return { id: 50 };
     if (path === "media/30") return { id: 30 };
     if (path === "sermons") {
@@ -147,11 +145,19 @@ function createApi(options: ApiOptions = {}) {
   } satisfies WordPressApi;
 }
 
-describe("WordPress sermon publishing", () => {
-  it("creates a verified draft using Series artwork and legacy sermon fields", async () => {
+describe("WordPress sermon drafts", () => {
+  it("refuses missing speakers without creating terms or uploading media", async () => {
+    const api = createApi({ speakerTerms: [] });
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
+      "No confident WordPress speaker match",
+    );
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.uploadMedia).not.toHaveBeenCalled();
+  });
+  it("creates a verified draft using Series artwork and required sermon fields", async () => {
     const api = createApi();
 
-    const result = await publishSermon(request, api);
+    const result = await createSermonDraft(request, api);
 
     expect(result).toEqual({
       mediaId: 50,
@@ -181,24 +187,11 @@ describe("WordPress sermon publishing", () => {
     expect(api.get).toHaveBeenCalledWith("media/50?context=edit");
   });
 
-  it("publishes at noon on the requested date when explicitly requested", async () => {
-    request.publish = true;
-    const api = createApi();
-
-    const result = await publishSermon(request, api);
-
-    expect(api.post).toHaveBeenCalledWith(
-      "sermons",
-      expect.objectContaining({ date: "2026-01-04T12:00:00", status: "publish" }),
-    );
-    expect(result.postStatus).toBe("publish");
-  });
-
   it("uses a WordPress-only scripture range without changing QC metadata verification", async () => {
     request.wordpressScripture = "Matthew 7:24–8:1";
     const api = createApi();
 
-    await publishSermon(request, api);
+    await createSermonDraft(request, api);
 
     expect(api.post).toHaveBeenCalledWith(
       "sermons",
@@ -218,7 +211,7 @@ describe("WordPress sermon publishing", () => {
     await writeQcReport({ outputPath: "/tmp/another-sermon.mp3" });
     const api = createApi();
 
-    await expect(publishSermon(request, api)).rejects.toThrow("does not match");
+    await expect(createSermonDraft(request, api)).rejects.toThrow("does not match");
     expect(api.get).not.toHaveBeenCalled();
   });
 
@@ -228,7 +221,9 @@ describe("WordPress sermon publishing", () => {
     });
     const api = createApi();
 
-    await expect(publishSermon(request, api)).rejects.toThrow("QC report metadata does not match");
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
+      "QC report metadata does not match",
+    );
     expect(api.get).not.toHaveBeenCalled();
   });
 
@@ -236,7 +231,7 @@ describe("WordPress sermon publishing", () => {
     const api = createApi();
     api.get.mockResolvedValueOnce([sermon({ id: 45 })]);
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       "A sermon already exists on 2026-01-04: Sample Sermon (45)",
     );
     expect(api.uploadMedia).not.toHaveBeenCalled();
@@ -245,7 +240,7 @@ describe("WordPress sermon publishing", () => {
   it("removes an uploaded file when post creation fails", async () => {
     const api = createApi({ postError: new Error("post rejected") });
 
-    await expect(publishSermon(request, api)).rejects.toThrow("post rejected");
+    await expect(createSermonDraft(request, api)).rejects.toThrow("post rejected");
     expect(api.delete).toHaveBeenCalledWith("media/50?force=true");
   });
 
@@ -257,7 +252,7 @@ describe("WordPress sermon publishing", () => {
       ],
     });
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       'No confident WordPress Series match for "Example Series"',
     );
     expect(api.uploadMedia).not.toHaveBeenCalled();
@@ -266,7 +261,7 @@ describe("WordPress sermon publishing", () => {
   it("refuses a Series without reusable artwork before uploading media", async () => {
     const api = createApi({ seriesPosts: [sermon({ featured_media: 0 })] });
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       "No existing sermon in Example Series has Series artwork to reuse",
     );
     expect(api.uploadMedia).not.toHaveBeenCalled();
@@ -278,7 +273,7 @@ describe("WordPress sermon publishing", () => {
     request.artwork = artwork;
     const api = createApi({ seriesPosts: [] });
 
-    await publishSermon(request, api);
+    await createSermonDraft(request, api);
 
     expect(api.uploadMedia).toHaveBeenNthCalledWith(1, artwork, "image/png");
     expect(api.uploadMedia).toHaveBeenNthCalledWith(2, request.input);
@@ -295,7 +290,7 @@ describe("WordPress sermon publishing", () => {
     request.artwork = artwork;
     const api = createApi({ postError: new Error("post rejected"), seriesPosts: [] });
 
-    await expect(publishSermon(request, api)).rejects.toThrow("post rejected");
+    await expect(createSermonDraft(request, api)).rejects.toThrow("post rejected");
     expect(api.delete).toHaveBeenCalledWith("media/50?force=true");
     expect(api.delete).toHaveBeenCalledWith("media/30?force=true");
   });
@@ -307,7 +302,7 @@ describe("WordPress sermon publishing", () => {
       source_url: "https://church.example.org/wp-content/uploads/sermon.mp3",
     });
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       "expected HTTPS storage on media.example.org",
     );
     expect(api.post).not.toHaveBeenCalledWith("sermons", expect.anything());
@@ -328,7 +323,7 @@ describe("WordPress sermon publishing", () => {
   ])("removes the draft and media when WordPress changes $field", async ({ field, overrides }) => {
     const api = createApi({ verifiedSermon: sermon(overrides) });
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       `WordPress did not preserve the verified sermon fields on post 40: ${field}`,
     );
     expect(api.delete).toHaveBeenCalledWith("sermons/40?force=true");
@@ -340,7 +335,7 @@ describe("WordPress sermon publishing", () => {
       verifiedMedia: { id: 50, post: 0, source_url: mediaUrl },
     });
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       "WordPress did not associate media 50 with post 40",
     );
     expect(api.delete).toHaveBeenCalledWith("sermons/40?force=true");
@@ -355,7 +350,7 @@ describe("WordPress sermon publishing", () => {
     });
     api.delete.mockRejectedValue(new Error("cleanup unavailable"));
 
-    await expect(publishSermon(request, api)).rejects.toThrow(
+    await expect(createSermonDraft(request, api)).rejects.toThrow(
       "WordPress did not preserve the verified sermon fields",
     );
     expect(api.delete).toHaveBeenCalledTimes(2);
@@ -369,19 +364,19 @@ describe("WordPress sermon publishing", () => {
       _ct_sm_bible01_end_chap: "7",
       _ct_sm_bible01_end_verse: "29",
     });
-    expect(publishSermonInternals.formatDuration(3599.6)).toBe("01:00:00");
+    expect(draftSermonInternals.formatDuration(3599.6)).toBe("01:00:00");
   });
 
   it("matches harmless Planning Center and WordPress naming differences", () => {
-    expect(publishSermonInternals.normalizedTermName("The Sermon on the Mount")).toBe(
+    expect(draftSermonInternals.normalizedTermName("The Sermon on the Mount")).toBe(
       "sermon-on-the-mount",
     );
-    expect(publishSermonInternals.personNamesMatch("Robert Parker", "Rob Parker")).toBe(true);
-    expect(publishSermonInternals.personNamesMatch("Matthew Jones", "Matt Jones")).toBe(true);
-    expect(publishSermonInternals.personNamesMatch("Alice Smith", "Rob Parker")).toBe(false);
-    expect(
-      publishSermonInternals.similarity("Sermon on the Mount", "The Sermon on the Mount"),
-    ).toBe(1);
+    expect(draftSermonInternals.personNamesMatch("Robert Parker", "Rob Parker")).toBe(true);
+    expect(draftSermonInternals.personNamesMatch("Matthew Jones", "Matt Jones")).toBe(true);
+    expect(draftSermonInternals.personNamesMatch("Alice Smith", "Rob Parker")).toBe(false);
+    expect(draftSermonInternals.similarity("Sermon on the Mount", "The Sermon on the Mount")).toBe(
+      1,
+    );
   });
 
   it("preserves verse suffixes", () => {

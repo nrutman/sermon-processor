@@ -36,7 +36,7 @@ const sayAvailable = process.platform === "darwin" && (await hasCommand("say"));
 const espeakAvailable = await hasCommand("espeak");
 const ttsAvailable = sayAvailable || espeakAvailable;
 
-function codecLossRunner(failAt?: "pcm" | "mp3"): CommandRunner {
+function codecLossRunner(failAt?: "pcm" | "mp3" | "peak"): CommandRunner {
   const actual = new ExecaCommandRunner();
   let mp3Measurements = 0;
   return {
@@ -60,11 +60,50 @@ function codecLossRunner(failAt?: "pcm" | "mp3"): CommandRunner {
             ...result,
             stderr: result.stderr.replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-25.00"'),
           };
+        if (failAt === "peak" && mp3Measurements === 2)
+          return {
+            ...result,
+            stderr: result.stderr
+              .replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-17.80"')
+              .replace(/"input_tp"\s*:\s*"[^"]+"/, '"input_tp":"-1.30"'),
+          };
       }
       if (
         failAt === "pcm" &&
         args.some((arg) => arg.startsWith("loudnorm=")) &&
         stageInput?.endsWith("08-corrected.wav")
+      )
+        return {
+          ...result,
+          stderr: result.stderr.replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-25.00"'),
+        };
+      return result;
+    },
+  };
+}
+
+function pcmUndershootRunner(
+  failCorrection: boolean | "margin" | "renormalization" = false,
+): CommandRunner {
+  const actual = new ExecaCommandRunner();
+  return {
+    async run(command, args) {
+      const result = await actual.run(command, args);
+      if (!args.some((arg) => arg.startsWith("loudnorm="))) return result;
+      const inputPath = args[args.indexOf("-i") + 1];
+      if (inputPath?.endsWith("06-normalized.wav"))
+        return {
+          ...result,
+          stderr: result.stderr
+            .replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-18.06"')
+            .replace(
+              /"input_tp"\s*:\s*"[^"]+"/,
+              typeof failCorrection === "string" ? '"input_tp":"-4.40"' : '"input_tp":"-4.80"',
+            ),
+        };
+      if (
+        (failCorrection === true && inputPath?.endsWith("06-corrected.wav")) ||
+        (failCorrection === "renormalization" && inputPath?.endsWith("06-renormalized.wav"))
       )
         return {
           ...result,
@@ -343,6 +382,49 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
       },
     });
   }
+  it("recovers normalized PCM undershoot and delivers independently verified MP3", async () => {
+    const actual = pcmUndershootRunner();
+    const correctionFilters: string[] = [];
+    let correctedPcm: Buffer | undefined;
+    let encodedCorrectedPcm = false;
+    const result = await processSermon(codecLossRequest("pcm-undershoot"), {
+      async run(command, args) {
+        const inputPath = args[args.indexOf("-i") + 1];
+        if (args.at(-1)?.endsWith("06-corrected.wav"))
+          correctionFilters.push(args[args.indexOf("-af") + 1]!);
+        if (inputPath?.endsWith("06-corrected.wav")) correctedPcm = await readFile(inputPath);
+        if (inputPath?.endsWith("06-normalized.wav") && args.includes("libmp3lame"))
+          encodedCorrectedPcm = (await readFile(inputPath)).equals(correctedPcm!);
+        return actual.run(command, args);
+      },
+    });
+    const report = qcReportSubsetSchema.parse(
+      JSON.parse(await readFile(result.qcReportPath, "utf8")),
+    );
+    expect(report.processing.stages).toContainEqual(
+      expect.objectContaining({ stage: "Verify corrected normalized PCM" }),
+    );
+    expect(report.loudness.normalizedPcm.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+    expect(correctionFilters).toContain("volume=0.260000dB");
+    expect(encodedCorrectedPcm).toBe(true);
+  }, 30_000);
+  it("withholds delivery and preserves checkpoint if corrected normalized PCM fails QC", async () => {
+    const request = codecLossRequest("pcm-undershoot-failed");
+    let message = "";
+    try {
+      await processSermon(request, pcmUndershootRunner(true));
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("outside the -16 ± 2 LU contract");
+    await expect(access(request.output)).rejects.toThrow("ENOENT");
+    const work = message.match(/Work files preserved: (.+)$/)?.[1];
+    expect(work).toBeDefined();
+    await expect(access(join(work!, "encoding-checkpoint.json"))).resolves.toBeUndefined();
+    await rm(work!, { recursive: true, force: true });
+  }, 30_000);
   it("encodes the corrected lossless PCM and reports its verified measurements", async () => {
     const result = await processSermon(codecLossRequest("codec-correction"), codecLossRunner());
     const report = qcReportSubsetSchema.parse(
@@ -354,6 +436,39 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     );
     expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
     expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+  }, 30_000);
+  it("recovers insufficient linear gain margin through independently verified dynamic normalization", async () => {
+    const result = await processSermon(
+      codecLossRequest("pcm-dynamic-recovery"),
+      pcmUndershootRunner("margin"),
+    );
+    const report = qcReportSubsetSchema.parse(
+      JSON.parse(await readFile(result.qcReportPath, "utf8")),
+    );
+    expect(report.processing.stages).toContainEqual(
+      expect.objectContaining({ stage: "Verify renormalized PCM" }),
+    );
+    expect(report.loudness.normalizedPcm.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.normalizedPcm.inputTp).toBeLessThanOrEqual(
+      report.loudness.normalizationTruePeakTargetDbtp + 0.6,
+    );
+    expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+  }, 30_000);
+  it("withholds delivery if dynamic PCM recovery fails independent QC", async () => {
+    const request = codecLossRequest("pcm-dynamic-failed");
+    let message = "";
+    try {
+      await processSermon(request, pcmUndershootRunner("renormalization"));
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("outside the -16 ± 2 LU contract");
+    await expect(access(request.output)).rejects.toThrow("ENOENT");
+    const work = message.match(/Work files preserved: (.+)$/)?.[1];
+    expect(work).toBeDefined();
+    await expect(access(join(work!, "encoding-checkpoint.json"))).resolves.toBeUndefined();
+    await rm(work!, { recursive: true, force: true });
   }, 30_000);
   it.each(["pcm", "mp3"] as const)(
     "preserves diagnostics without delivering audio when corrected %s verification fails",
@@ -374,4 +489,19 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     },
     30_000,
   );
+  it("retries from premaster when codec gain introduces MP3 peak overshoot", async () => {
+    const result = await processSermon(
+      codecLossRequest("codec-gain-peak-retry"),
+      codecLossRunner("peak"),
+    );
+    const report = qcReportSubsetSchema.parse(
+      JSON.parse(await readFile(result.qcReportPath, "utf8")),
+    );
+    expect(report.processing.encodingAttempts).toBe(3);
+    expect(report.processing.stages).toContainEqual(
+      expect.objectContaining({ stage: "Normalize PCM (attempt 2)" }),
+    );
+    expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+  }, 30_000);
 });

@@ -10,13 +10,13 @@ import { buildMp3Metadata } from "../metadata/sermon-metadata.js";
 import type { WordPressApi } from "./client.js";
 import {
   buildScriptureMeta,
-  publishSermon,
+  createSermonDraft,
   resolveTerm,
   sermonSchema,
   verifyQcReport,
   verifySermonReadback,
   verifyUploadedMediaUrl,
-} from "./publish-sermon.js";
+} from "./draft-sermon.js";
 
 const requestSchema = z.object({
   input: z.string(),
@@ -164,7 +164,6 @@ export async function planPublication(
   const durationSeconds = await verifyQcReport({
     ...request,
     mediaHost: config.mediaHost,
-    publish: false,
   });
   const qcBytes = await readFile(request.qcReport, "utf8");
   const approvedHash = z
@@ -195,11 +194,9 @@ export async function planPublication(
     throw new Error("Possible existing/orphan audio attachment; reconcile before uploading");
   const [speaker, series] = await Promise.all([
     resolveTerm(api, "sermon-speakers", request.metadata.preacher, {
-      createIfMissing: false,
       personName: true,
     }),
     resolveTerm(api, "sermon-series", request.metadata.sermonSeries, {
-      createIfMissing: false,
       personName: false,
     }),
   ]);
@@ -358,11 +355,9 @@ export async function draftPublication(
     z.object({ timezone: z.literal("America/New_York") }).parse(await api.get("settings"));
     const [speaker, series] = await Promise.all([
       resolveTerm(api, "sermon-speakers", receipt.request.metadata.preacher, {
-        createIfMissing: false,
         personName: true,
       }),
       resolveTerm(api, "sermon-series", receipt.request.metadata.sermonSeries, {
-        createIfMissing: false,
         personName: false,
       }),
     ]);
@@ -391,10 +386,9 @@ export async function draftPublication(
         record(`UPLOAD ${type ?? "audio/mpeg"}`, () => api.uploadMedia(file, type)),
     };
     try {
-      const result = await publishSermon(
+      const result = await createSermonDraft(
         {
           ...receipt.request,
-          publish: false,
           mediaHost: config.mediaHost,
           featuredMediaId: receipt.artworkId,
         },

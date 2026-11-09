@@ -1,5 +1,22 @@
 import type { LoudnessMeasurement } from "./loudness.js";
 
+export class InsufficientPcmGainMarginError extends Error {}
+
+/** Returns a PCM loudness-floor correction bounded by the measured normalization peak margin. */
+export function planPcmGain(
+  pcm: LoudnessMeasurement,
+  target: { lufs: number; truePeak: number },
+): number {
+  if (pcm.inputI >= target.lufs - 2) return 0;
+  const gain = target.lufs - 1.8 - pcm.inputI;
+  // Keep measured peak headroom; the verification tolerance is not extra gain budget.
+  if (gain > target.truePeak - pcm.inputTp - 0.2)
+    throw new InsufficientPcmGainMarginError(
+      "Insufficient measured peak margin to correct normalized PCM loudness safely",
+    );
+  return gain;
+}
+
 /** Returns a bounded PCM gain correction for an MP3 below the loudness floor, or zero when none is needed. */
 export function planCodecGain(
   pcm: LoudnessMeasurement,
