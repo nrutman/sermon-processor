@@ -1,1 +1,97 @@
-CLAUDE.md
+# Sermon Processor agent guidance
+
+## Purpose
+
+This repository contains a TypeScript CLI that cleans and masters AIFF or PCM WAV sermon
+recordings. TypeScript orchestrates established audio tools; FFmpeg performs the
+DSP. Do not reimplement codecs, filters, FFTs, resampling, or loudness algorithms
+in application code when a maintained third-party tool already provides them.
+
+## Source recordings
+
+Raw sermon audio defaults to `~/Library/CloudStorage/Dropbox/Sermons`
+(`~/Dropbox/Sermons` on legacy Dropbox installations). Look there for the requested
+sermon date before asking for a source path. If the matching recording is missing
+or multiple files match, ask rather than processing another date's recording.
+
+## Commands
+
+```sh
+pnpm install
+pnpm format:check
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+pnpm check
+```
+
+Dependencies must be at least three days old. Keep `minimumReleaseAge: 4320`
+and `minimumReleaseAgeStrict: true` in `pnpm-workspace.yaml`.
+
+## Audio safety rules
+
+- Preserve the source file; never edit it in place.
+- Keep processing stages lossless until the final MP3 encode.
+- Run loudness normalization after every duration- or level-changing edit.
+- Only delete handling-noise events with quiet boundaries and confidence at or
+  above the configured threshold. Report ambiguous events instead.
+- Prefer shortening long silence to a natural pause over joining speech with no
+  pause.
+- Verify the final codec, bitrate, channels, loudness, and metadata rather than
+  trusting the render command.
+- Record derived thresholds, tool versions, edits, and warnings in the QC report.
+- Recover final encoding failures with `pnpm resume <encoding-checkpoint.json>`;
+  never rerun source cleanup solely to experiment with encoding.
+
+## Weekly publication
+
+Use `pnpm publication plan`, `draft`, `verify`, `publish --approve`, and `cleanup`
+with a gitignored publication receipt. Follow `.agents/skills/publish-sermon/SKILL.md`.
+Do not create ad-hoc scripts for routine publishing. Present the read-only plan
+before mutation and require explicit publication approval. Reconcile uncertain
+remote state before any retry; never blindly upload again.
+
+After verified publication, clean up the matching local processed MP3 using
+`pnpm publication cleanup <receipt>`. User permits routine post-publication cleanup.
+Never remove source recordings, QC reports, receipts, or diagnostic stages.
+
+## Architecture
+
+- `src/config/`: validated user input and processing defaults
+- `src/audio/`: FFmpeg analysis, filtering, encoding, and verification
+- `src/process/`: pipeline orchestration and subprocess boundary
+- `src/report/`: stable machine-readable QC report contracts
+- `src/metadata/`: sermon-specific metadata formatting
+- `src/**/__tests__/`: colocated unit and integration tests
+
+Pass subprocess arguments as arrays. Do not interpolate shell command strings.
+Inject `CommandRunner` in tests instead of adding test-only dependencies to
+production interfaces.
+
+Keep output naming configurable through `.env` and `.env.local`; do not hardcode
+paths or filename formats in the CLI. `.env` is the committed template.
+`.env.local` contains runtime values and must remain gitignored.
+
+## Testing
+
+Assert observable behavior and audio metrics rather than exact encoded bytes.
+Generated fixtures must cover clean speech, differing levels, room tone,
+silences around the one-second boundary, handling noise, plosives, and Unicode
+metadata. Any detector change must show that it removes the known handling-noise
+fixture without removing the speech-like negative fixture.
+
+Whenever tests are added or changed, review the whole affected test surface and
+answer these questions:
+
+1. Are any high-value cases missing, especially safety guards, boundary
+   conditions, error paths, and observable fallback behavior?
+2. Can the tests be consolidated or simplified without adding conditional logic
+   to test bodies or obscuring descriptive case names?
+3. Can any low-value tests be removed because they are tautological,
+   implementation-coupled, or redundant with stronger behavioral coverage?
+
+Use coverage reports to find untested behavior, not as a reason to test trivial
+callbacks, thin wrappers, or unreachable post-validation guards. Prefer tests
+that protect audio integrity, publication safety, rollback behavior, and stable
+external-service contracts.
