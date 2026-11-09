@@ -7,6 +7,13 @@ recordings. TypeScript orchestrates established audio tools; FFmpeg performs the
 DSP. Do not reimplement codecs, filters, FFTs, resampling, or loudness algorithms
 in application code when a maintained third-party tool already provides them.
 
+## Source recordings
+
+Raw sermon audio defaults to `~/Library/CloudStorage/Dropbox/Sermons`
+(`~/Dropbox/Sermons` on legacy Dropbox installations). Look there for the requested
+sermon date before asking for a source path. If the matching recording is missing
+or multiple files match, ask rather than processing another date's recording.
+
 ## Commands
 
 ```sh

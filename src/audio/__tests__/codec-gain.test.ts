@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planCodecGain } from "../codec-gain.js";
+import { planCodecGain, planPcmGain } from "../codec-gain.js";
 const measurement = {
   inputI: -17.78,
   inputTp: -4.66,
@@ -8,6 +8,22 @@ const measurement = {
   targetOffset: 0,
 };
 const target = { lufs: -16, truePeak: -1.5, pcmTruePeak: -4.3 };
+describe("normalized PCM loudness correction", () => {
+  const pcmTarget = { lufs: -16, truePeak: -4.3 };
+  it("recovers the sermon undershoot without spending verification tolerance", () => {
+    expect(planPcmGain({ ...measurement, inputI: -18.06, inputTp: -4.8 }, pcmTarget)).toBeCloseTo(
+      0.26,
+    );
+  });
+  it("leaves PCM at the loudness floor unchanged", () => {
+    expect(planPcmGain({ ...measurement, inputI: -18 }, pcmTarget)).toBe(0);
+  });
+  it("refuses correction when measured peak margin is insufficient", () => {
+    expect(() => planPcmGain({ ...measurement, inputI: -18.06, inputTp: -4.5 }, pcmTarget)).toThrow(
+      "Insufficient measured peak margin",
+    );
+  });
+});
 describe("codec loudness correction", () => {
   it("corrects measured codec loudness loss inside both peak margins", () => {
     expect(

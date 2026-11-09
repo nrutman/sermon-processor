@@ -10,6 +10,52 @@ import type { RoomToneInterval } from "./analyze.js";
 export const codecPreencodePeakLimit = 0.57;
 export const codecPreencodePeakLimitDbfs = 20 * Math.log10(codecPreencodePeakLimit);
 
+/** Renders lossless PCM using dynamic loudness normalization with a true-peak ceiling. */
+export async function renormalizePcm(
+  input: string,
+  output: string,
+  loudness: LoudnessMeasurement,
+  options: ProcessingOptions,
+  truePeakDbtp: number,
+  runtime: AudioRuntime,
+  runner: CommandRunner,
+): Promise<void> {
+  await runner.run(runtime.ffmpegPath, [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i",
+    input,
+    "-af",
+    `loudnorm=I=${options.targetLufs}:LRA=${options.targetLra}:TP=${truePeakDbtp}:measured_I=${loudness.inputI}:measured_LRA=${loudness.inputLra}:measured_TP=${loudness.inputTp}:measured_thresh=${loudness.inputThreshold}:offset=${loudness.targetOffset}:linear=false,aresample=44100`,
+    "-c:a",
+    "pcm_s24le",
+    output,
+  ]);
+}
+
+/** Renders lossless PCM with a constant gain in decibels. */
+export async function renderPcmGain(
+  input: string,
+  output: string,
+  gainDb: number,
+  runtime: AudioRuntime,
+  runner: CommandRunner,
+): Promise<void> {
+  await runner.run(runtime.ffmpegPath, [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i",
+    input,
+    "-af",
+    `volume=${gainDb.toFixed(6)}dB`,
+    "-c:a",
+    "pcm_s24le",
+    output,
+  ]);
+}
+
 export function parseNoiseProfile(output: string): number[] {
   const values = output
     .match(/\bbn=([\d.eE+\- ]+)/)?.[1]

@@ -62,7 +62,13 @@ dB of codec headroom below the configured final true-peak ceiling, verifies the
 PCM master, encodes the MP3 without additional DSP, and then verifies the MP3.
 If codec overshoot still exceeds the ceiling, it retries only normalization and
 encoding from the lossless premaster when the output has enough loudness margin
-for the additional measured headroom.
+for the additional measured headroom, or when codec-gain correction warrants fresh
+normalization despite insufficient predicted margin. All delivered output must
+still pass unchanged loudness and true-peak checks.
+When normalized PCM undershoots the loudness floor, the pipeline uses bounded
+linear gain when measured peak margin permits. Otherwise it applies FFmpeg
+dynamic normalization, then independently verifies the recovered PCM before
+encoding. Both recovery paths are recorded in QC warnings.
 Before level-changing processing, it selects a speech-free room-tone interval,
 captures a 15-band FFmpeg noise profile, and applies that profile across the
 recording. It then re-measures the denoised noise floor and derives a separate,
