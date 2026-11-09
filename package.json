@@ -19,7 +19,6 @@
     "lint": "oxlint --type-aware --vitest-plugin --deny-warnings .",
     "plan-metadata": "tsx src/cli.ts plan-metadata",
     "process": "tsx src/cli.ts process",
-    "publish-sermon": "tsx src/cli.ts publish",
     "publication": "tsx src/cli.ts publication",
     "resume": "tsx src/cli.ts resume",
     "test": "vitest run",

@@ -1,26 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type LoadSermonConfig = typeof import("../config/output-config.js").loadSermonConfig;
-type LoadWordPressConfig = typeof import("../config/wordpress-config.js").loadWordPressConfig;
 type ProcessSermon = typeof import("../process/process-sermon.js").processSermon;
-type PublishSermon = typeof import("../wordpress/publish-sermon.js").publishSermon;
 
 const mocks = vi.hoisted(() => ({
   loadSermonConfig: vi.fn<LoadSermonConfig>(),
-  loadWordPressConfig: vi.fn<LoadWordPressConfig>(),
   processSermon: vi.fn<ProcessSermon>(),
-  publishSermon: vi.fn<PublishSermon>(),
 }));
 
 vi.mock("../config/output-config.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../config/output-config.js")>()),
   loadSermonConfig: mocks.loadSermonConfig,
 }));
-vi.mock("../config/wordpress-config.js", () => ({
-  loadWordPressConfig: mocks.loadWordPressConfig,
-}));
 vi.mock("../process/process-sermon.js", () => ({ processSermon: mocks.processSermon }));
-vi.mock("../wordpress/publish-sermon.js", () => ({ publishSermon: mocks.publishSermon }));
 
 import { createProgram } from "../cli.js";
 
@@ -103,111 +95,14 @@ describe("process command", () => {
   });
 });
 
-describe("publish command", () => {
-  it.each([
-    { argument: [] as string[], expectedPublish: false, status: "draft" as const },
-    { argument: ["--publish"], expectedPublish: true, status: "publish" as const },
-  ])("passes publish=$expectedPublish to the publisher", async (scenario) => {
-    mocks.loadSermonConfig.mockResolvedValue({
-      filenameFormat: "SERMON-YYYY-MM-DD-LAST",
-      organization: "Example Church",
-      outputDirectory: "/tmp",
-    });
-    mocks.loadWordPressConfig.mockResolvedValue({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
-    mocks.publishSermon.mockResolvedValue({
-      mediaId: 50,
-      mediaUrl: "https://media.example.org/sermon.mp3",
-      postId: 40,
-      postStatus: scenario.status,
-      postUrl: "https://church.example.org/sermons/sample-sermon",
-    });
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    await createProgram().parseAsync(
-      [
-        "publish",
-        "/tmp/sermon.mp3",
-        "--qc",
-        "/tmp/sermon.qc.json",
-        "--preacher",
-        "Alice Smith",
-        "--series",
-        "Example Series",
-        "--date",
-        "2026-01-04",
-        "--scripture",
-        "Matthew 5:1–12",
-        ...scenario.argument,
-      ],
-      { from: "user" },
-    );
-
-    expect(mocks.publishSermon.mock.calls[0]?.[0]).toEqual({
-      input: "/tmp/sermon.mp3",
-      mediaHost: "media.example.org",
-      metadata: {
-        date: "2026-01-04",
-        organization: "Example Church",
-        preacher: "Alice Smith",
-        scripture: "Matthew 5:1–12",
-        sermonSeries: "Example Series",
-        title: undefined,
-      },
-      publish: scenario.expectedPublish,
-      qcReport: "/tmp/sermon.qc.json",
-    });
-  });
-
-  it("passes a WordPress-only scripture range separately from verified MP3 metadata", async () => {
-    mocks.loadSermonConfig.mockResolvedValue({
-      filenameFormat: "SERMON-YYYY-MM-DD-LAST",
-      organization: "Example Church",
-      outputDirectory: "/tmp",
-    });
-    mocks.loadWordPressConfig.mockResolvedValue({
-      applicationPassword: "app-password",
-      mediaHost: "media.example.org",
-      siteUrl: "https://church.example.org",
-      username: "publisher",
-    });
-    mocks.publishSermon.mockResolvedValue({
-      mediaId: 50,
-      mediaUrl: "https://media.example.org/sermon.mp3",
-      postId: 40,
-      postStatus: "draft",
-      postUrl: "https://church.example.org/sermons/sample-sermon",
-    });
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    await createProgram().parseAsync(
-      [
-        "publish",
-        "/tmp/sermon.mp3",
-        "--qc",
-        "/tmp/sermon.qc.json",
-        "--preacher",
-        "Alice Smith",
-        "--series",
-        "Example Series",
-        "--date",
-        "2026-01-04",
-        "--scripture",
-        "Matthew 5:1–12, 17–20",
-        "--wordpress-scripture",
-        "Matthew 5:1–20",
-      ],
-      { from: "user" },
-    );
-
-    expect(mocks.publishSermon.mock.calls[0]?.[0]).toMatchObject({
-      metadata: { scripture: "Matthew 5:1–12, 17–20" },
-      wordpressScripture: "Matthew 5:1–20",
-    });
+describe("command availability", () => {
+  it("rejects direct publishing outside the receipt workflow", async () => {
+    const program = createProgram()
+      .exitOverride()
+      .configureOutput({ writeErr: () => undefined });
+    await expect(
+      program.parseAsync(["publish", "/tmp/sermon.mp3"], { from: "user" }),
+    ).rejects.toThrow("unknown command 'publish'");
   });
 });
 

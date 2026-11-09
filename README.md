@@ -177,15 +177,6 @@ pnpm publication verify <receipt.json>
 - Orphan attachments need operator review; keep local audio until publication is verified.
 - Remove stale locks only after confirming no owning process is running.
 
-### Legacy command
-
-`pnpm publish-sermon` remains available for compatibility. **Use `pnpm publication`
-for routine publishing**; the legacy command lacks the durable receipt lifecycle.
-
-- Legacy uploads accept sermon metadata, `--qc`, and optional `--artwork`.
-- Draft is default; `--publish` makes the sermon public immediately and requires approval.
-- Legacy publishing refuses duplicate dates, matches speaker/Series, and requires offloaded HTTPS media on `WORDPRESS_MEDIA_HOST`.
-
 ## Development checks
 
 | Command              | Purpose                                |

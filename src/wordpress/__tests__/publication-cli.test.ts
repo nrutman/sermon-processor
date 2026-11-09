@@ -86,6 +86,8 @@ describe("publication CLI", () => {
         "2026-11-01",
         "--scripture",
         "2 Corinthians 4:1–6",
+        "--wordpress-scripture",
+        "2 Corinthians 4:1–7",
         "--title",
         "Gospel",
         "--artwork",
@@ -97,7 +99,12 @@ describe("publication CLI", () => {
       expect.objectContaining({
         input: "sermon.mp3",
         artwork: "art.png",
-        metadata: expect.objectContaining({ organization: "Church", title: "Gospel" }),
+        wordpressScripture: "2 Corinthians 4:1–7",
+        metadata: expect.objectContaining({
+          organization: "Church",
+          title: "Gospel",
+          scripture: "2 Corinthians 4:1–6",
+        }),
       }),
       expect.stringContaining("receipt.json"),
       expect.anything(),
