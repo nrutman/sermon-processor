@@ -54,14 +54,14 @@ pnpm process <input.aiff-or-wav> \
 
 ### Processing guarantees
 
-| Area           | Behavior                                                                                                                                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Denoising      | Sample speech-free room tone before level changes; apply 15-band FFmpeg profile; remeasure noise and derive separate analysis/pause thresholds.                                                                                  |
-| PCM mastering  | Normalize lossless PCM with initial 2.8 dB codec headroom; independently verify before MP3 encoding.                                                                                                                             |
-| PCM undershoot | Apply bounded gain if measured peak margin permits; otherwise use measured dynamic normalization. Verify recovered PCM and record warnings.                                                                                      |
-| MP3 encoding   | Encode without additional DSP; independently verify MP3 loudness, peak, technical properties, and metadata.                                                                                                                      |
-| Codec recovery | Correct codec loudness loss only within both measured peak margins. Retry normalization/encoding from premaster for eligible peak overshoot. Gain-corrected encodes may retry despite insufficient predicted attenuation margin. |
-| Delivery       | All output must pass unchanged loudness and true-peak checks.                                                                                                                                                                    |
+| Area           | Behavior                                                                                                                                                                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Denoising      | Sample speech-free room tone before level changes; apply 15-band FFmpeg profile; remeasure noise and derive separate analysis/pause thresholds.                                                                                                                                           |
+| PCM mastering  | Normalize lossless PCM with initial 2.8 dB codec headroom; independently verify before MP3 encoding.                                                                                                                                                                                      |
+| PCM undershoot | Apply bounded gain if measured peak margin permits; otherwise use measured dynamic normalization. Verify recovered PCM and record warnings.                                                                                                                                               |
+| MP3 encoding   | Encode without additional DSP; independently verify MP3 loudness, peak, technical properties, and metadata.                                                                                                                                                                               |
+| Codec recovery | Correct codec loudness loss only within both measured peak margins. Retry peak overshoot within attempt limit regardless of predicted attenuation margin, applying 2:1 premaster compression and freshly measured dynamic normalization. Independently verify unchanged delivery targets. |
+| Delivery       | All output must pass unchanged loudness and true-peak checks.                                                                                                                                                                                                                             |
 
 See [pipeline guide](../../../docs/processing-pipeline.md) for defaults and stage details.
 
@@ -72,14 +72,15 @@ See [pipeline guide](../../../docs/processing-pipeline.md) for defaults and stag
 3. Measure normalized PCM and MP3 separately before considering any delivery-target change.
 4. Resume through the checkpoint; never rerun cleanup solely to experiment with encoding.
 
-| File                                       | Inspect for                           |
-| ------------------------------------------ | ------------------------------------- |
-| `04-transcript-clean.wav`                  | Semantic gap shortening               |
-| `05-premaster.wav`                         | Pacing, leveling, compression         |
-| `06-normalized.wav`                        | PCM normalization/resampling          |
-| `06-corrected.wav` / `06-renormalized.wav` | PCM recovery, if not already promoted |
-| `08-corrected.wav`                         | Codec-loss PCM gain, when present     |
-| `07-output.mp3`                            | Lossy encoding effects, when present  |
+| File                                       | Inspect for                                     |
+| ------------------------------------------ | ----------------------------------------------- |
+| `04-transcript-clean.wav`                  | Semantic gap shortening                         |
+| `05-premaster.wav`                         | Pacing, leveling, compression                   |
+| `05-peak-recovery.wav`                     | Compressed premaster for codec-headroom retries |
+| `06-normalized.wav`                        | PCM normalization/resampling                    |
+| `06-corrected.wav` / `06-renormalized.wav` | PCM recovery, if not already promoted           |
+| `08-corrected.wav`                         | Codec-loss PCM gain, when present               |
+| `07-output.mp3`                            | Lossy encoding effects, when present            |
 
 After preparation, work directory contains `encoding-checkpoint.json`:
 

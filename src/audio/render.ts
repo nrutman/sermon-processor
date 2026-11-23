@@ -10,6 +10,28 @@ import type { RoomToneInterval } from "./analyze.js";
 export const codecPreencodePeakLimit = 0.57;
 export const codecPreencodePeakLimitDbfs = 20 * Math.log10(codecPreencodePeakLimit);
 
+/** Renders lossless PCM with 2:1 compression at the supplied threshold in decibels. */
+export async function compressRecoveryPeaks(
+  input: string,
+  output: string,
+  thresholdDb: number,
+  runtime: AudioRuntime,
+  runner: CommandRunner,
+): Promise<void> {
+  await runner.run(runtime.ffmpegPath, [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i",
+    input,
+    "-af",
+    `acompressor=threshold=${thresholdDb}dB:ratio=2:attack=1:release=100:makeup=1:knee=2.828`,
+    "-c:a",
+    "pcm_s24le",
+    output,
+  ]);
+}
+
 /** Renders lossless PCM using dynamic loudness normalization with a true-peak ceiling. */
 export async function renormalizePcm(
   input: string,

@@ -111,7 +111,6 @@ describe("adaptive MP3 codec headroom", () => {
           outputTruePeakDbtp: attempt === 1 ? -1.2 : -1.6,
         };
       },
-      -18,
       -1.5,
       progress,
       { initialHeadroomDb: 2.8, maximumAttempts: 3, retrySafetyMarginDb: 0.2 },
@@ -130,22 +129,35 @@ describe("adaptive MP3 codec headroom", () => {
     );
   });
 
-  it("skips a retry that cannot preserve the loudness contract", async () => {
+  it("retries peak overshoot despite insufficient predicted attenuation margin", async () => {
     const progress = vi.fn<ProcessingProgressReporter>();
     const encoded = await processSermonInternals.withAdaptiveCodecHeadroom(
-      async () => ({ outputLoudnessLufs: -17.8, outputTruePeakDbtp: -1.2 }),
-      -18,
+      async (_headroom, attempt) => ({
+        outputLoudnessLufs: -17.8,
+        outputTruePeakDbtp: attempt === 1 ? -1.2 : -1.6,
+      }),
       -1.5,
       progress,
       { maximumAttempts: 2 },
     );
 
-    expect(encoded).toMatchObject({ attempts: 1, result: { outputTruePeakDbtp: -1.2 } });
+    expect(encoded).toMatchObject({ attempts: 2, result: { outputTruePeakDbtp: -1.6 } });
     expect(progress).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining("would exceed the loudness contract"),
-        stage: "Skip final retry",
+        stage: "Retry final encode",
       }),
     );
+  });
+
+  it("stops at the retry limit when peak overshoot persists", async () => {
+    const render = vi.fn<() => Promise<{ outputLoudnessLufs: number; outputTruePeakDbtp: number }>>(
+      async () => ({ outputLoudnessLufs: -17.8, outputTruePeakDbtp: -1 }),
+    );
+    const encoded = await processSermonInternals.withAdaptiveCodecHeadroom(render, -1.5, vi.fn(), {
+      maximumAttempts: 3,
+    });
+
+    expect(encoded).toMatchObject({ attempts: 3, result: { outputTruePeakDbtp: -1 } });
+    expect(render).toHaveBeenCalledTimes(3);
   });
 });

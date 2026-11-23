@@ -47,16 +47,17 @@ flowchart TD
 
 ### Automatic recovery
 
-| Condition                                                  | Response                                                                                                                                                                           |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PCM below floor, enough peak margin                        | Apply bounded linear gain; remeasure before promotion/encoding.                                                                                                                    |
-| PCM below floor, insufficient linear-gain margin           | Use measured dynamic FFmpeg normalization to reshape peaks; remeasure before promotion/encoding.                                                                                   |
-| MP3 below floor, both PCM and MP3 peak margins permit gain | Apply calibrated gain to PCM; verify PCM, re-encode, and remeasure MP3.                                                                                                            |
-| MP3 peak overshoot                                         | Retry from premaster with measured additional headroom. Gain-corrected encodes may warrant fresh normalization even when simple attenuation predicts insufficient loudness margin. |
-| Recovery cannot pass QC                                    | Fail and preserve diagnostics. Never weaken delivery targets.                                                                                                                      |
+| Condition                                                  | Response                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PCM below floor, enough peak margin                        | Apply bounded linear gain; remeasure before promotion/encoding.                                                                                                                                                                                                            |
+| PCM below floor, insufficient linear-gain margin           | Use measured dynamic FFmpeg normalization to reshape peaks; remeasure before promotion/encoding.                                                                                                                                                                           |
+| MP3 below floor, both PCM and MP3 peak margins permit gain | Apply calibrated gain to PCM; verify PCM, re-encode, and remeasure MP3.                                                                                                                                                                                                    |
+| MP3 peak overshoot                                         | Retry from premaster with additional headroom, 2:1 compression, and freshly measured dynamic normalization, regardless of predicted attenuation margin. Compression threshold is integrated loudness minus 3 dB, clamped to −60–0 dB, with 1 ms attack and 100 ms release. |
+| Recovery cannot pass QC                                    | Fail and preserve diagnostics. Never weaken delivery targets.                                                                                                                                                                                                              |
 
 - Headroom retries are bounded to three normalization attempts.
 - QC records actual encode count, timings, final measurements, corrections, and warnings.
+- QC schema version 6 reports `codecPreencodePeakLimitDbfs` as `null` when dynamic recovery replaces the fixed sample-peak limiter. `normalizationTruePeakTargetDbtp` still records the dynamic normalization target.
 - Report-only regions remain unchanged. Automatic QC does not claim a listening review.
 
 ## Resume after failure
@@ -74,6 +75,7 @@ pnpm resume <work-directory>/encoding-checkpoint.json
 | ------------------------------------------ | ------------------------------------------------------------------- |
 | `04-transcript-clean.wav`                  | Transcript-gap edits                                                |
 | `05-premaster.wav`                         | Pacing, leveling, compression; resume input                         |
+| `05-peak-recovery.wav`                     | Compressed premaster used for codec-headroom retries                |
 | `06-normalized.wav`                        | Normalized PCM before codec-loss correction                         |
 | `06-corrected.wav` / `06-renormalized.wav` | Recovery files; promoted after verification, so may no longer exist |
 | `08-corrected.wav`                         | PCM after codec-loss gain correction, when needed                   |
