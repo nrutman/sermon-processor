@@ -115,9 +115,10 @@ function pcmUndershootRunner(
 }
 
 const qcReportSubsetSchema = z.object({
+  schemaVersion: z.literal(6),
   handlingNoise: z.array(z.object({ action: z.string() })),
   loudness: z.object({
-    codecPreencodePeakLimitDbfs: z.number(),
+    codecPreencodePeakLimitDbfs: z.number().nullable(),
     normalizedPcm: z.object({ inputI: z.number(), inputTp: z.number() }),
     normalizationTruePeakTargetDbtp: z.number(),
     output: z.object({ inputI: z.number(), inputTp: z.number() }),
@@ -448,6 +449,7 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     expect(report.processing.stages).toContainEqual(
       expect.objectContaining({ stage: "Verify renormalized PCM" }),
     );
+    expect(report.loudness.codecPreencodePeakLimitDbfs).toBeNull();
     expect(report.loudness.normalizedPcm.inputI).toBeGreaterThanOrEqual(-18);
     expect(report.loudness.normalizedPcm.inputTp).toBeLessThanOrEqual(
       report.loudness.normalizationTruePeakTargetDbtp + 0.6,
@@ -501,7 +503,73 @@ describe.skipIf(!ffmpegAvailable)("sermon processing integration", () => {
     expect(report.processing.stages).toContainEqual(
       expect.objectContaining({ stage: "Normalize PCM (attempt 2)" }),
     );
+    expect(report.processing.stages).toContainEqual(
+      expect.objectContaining({ stage: "Measure compressed premaster (attempt 2)" }),
+    );
+    expect(report.loudness.codecPreencodePeakLimitDbfs).toBeNull();
     expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
     expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+  }, 30_000);
+
+  it("recovers codec peak overshoot near the loudness floor without linear gain", async () => {
+    const actual = new ExecaCommandRunner();
+    let mp3Measurements = 0;
+    const result = await processSermon(codecLossRequest("codec-dynamic-retry"), {
+      async run(command, args) {
+        const measured = await actual.run(command, args);
+        if (
+          args.some((arg) => arg.startsWith("loudnorm=")) &&
+          args[args.indexOf("-i") + 1]?.endsWith("07-output.mp3") &&
+          ++mp3Measurements === 1
+        )
+          return {
+            ...measured,
+            stderr: measured.stderr
+              .replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-17.70"')
+              .replace(/"input_tp"\s*:\s*"[^"]+"/, '"input_tp":"-1.00"'),
+          };
+        return measured;
+      },
+    });
+    const report = qcReportSubsetSchema.parse(
+      JSON.parse(await readFile(result.qcReportPath, "utf8")),
+    );
+    expect(report.processing.stages).toContainEqual(
+      expect.objectContaining({ stage: "Normalize PCM (attempt 2)" }),
+    );
+    expect(report.loudness.output.inputI).toBeGreaterThanOrEqual(-18);
+    expect(report.loudness.output.inputTp).toBeLessThanOrEqual(-1.5);
+  }, 30_000);
+
+  it("withholds delivery and preserves checkpoint after persistent codec peak failure", async () => {
+    const actual = new ExecaCommandRunner();
+    const request = codecLossRequest("codec-persistent-peak");
+    let message = "";
+    try {
+      await processSermon(request, {
+        async run(command, args) {
+          const measured = await actual.run(command, args);
+          if (
+            args.some((arg) => arg.startsWith("loudnorm=")) &&
+            args[args.indexOf("-i") + 1]?.endsWith("07-output.mp3")
+          )
+            return {
+              ...measured,
+              stderr: measured.stderr
+                .replace(/"input_i"\s*:\s*"[^"]+"/, '"input_i":"-17.00"')
+                .replace(/"input_tp"\s*:\s*"[^"]+"/, '"input_tp":"-1.00"'),
+            };
+          return measured;
+        },
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("Output true peak -1 dBTP exceeds the -1.5 dBTP target");
+    await expect(access(request.output)).rejects.toThrow("ENOENT");
+    const work = message.match(/Work files preserved: (.+)$/)?.[1];
+    expect(work).toBeDefined();
+    await expect(access(join(work!, "encoding-checkpoint.json"))).resolves.toBeUndefined();
+    await rm(work!, { recursive: true, force: true });
   }, 30_000);
 });

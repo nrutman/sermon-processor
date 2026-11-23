@@ -11,6 +11,7 @@ import { verifyMp3Metadata } from "../audio/metadata.js";
 import { probeAudioInput } from "../audio/probe.js";
 import {
   createPremaster,
+  compressRecoveryPeaks,
   codecPreencodePeakLimitDbfs,
   captureNoiseProfile,
   decodeToCanonicalWav,
@@ -77,7 +78,6 @@ async function withAdaptiveCodecHeadroom<
   },
 >(
   renderAttempt: (codecHeadroomDb: number, attempt: number) => Promise<Result>,
-  minimumOutputLufs: number,
   outputTruePeakTargetDbtp: number,
   reportProgress: ProcessingProgressReporter,
   options: {
@@ -98,19 +98,8 @@ async function withAdaptiveCodecHeadroom<
       return { attempts: attempt, result };
     }
     const additionalHeadroomDb = truePeakOvershootDb + retrySafetyMarginDb;
-    // A fresh normalization can change codec gain and gating; do not model a
-    // corrected encode as simple attenuation. Every retry still passes full QC.
-    if (
-      result.outputLoudnessLufs - additionalHeadroomDb < minimumOutputLufs &&
-      !(result.gainCorrectionDb !== undefined && result.gainCorrectionDb > 0)
-    ) {
-      reportProgress({
-        stage: "Skip final retry",
-        status: "completed",
-        message: `The ${additionalHeadroomDb.toFixed(2)} dB peak correction would exceed the loudness contract`,
-      });
-      return { attempts: attempt, result };
-    }
+    // Fresh nonlinear normalization is not simple attenuation. Predicted loudness
+    // cannot rule out recovery; final measurements still enforce both contracts.
     codecHeadroomDb += additionalHeadroomDb;
     reportProgress({
       stage: "Retry final encode",
@@ -326,7 +315,7 @@ async function executeSermon(
       async (codecHeadroomDb, attempt) => {
         const attemptSuffix = attempt === 1 ? "" : ` (attempt ${attempt})`;
         const normalizationTruePeakTargetDbtp = request.processing.truePeakDbtp - codecHeadroomDb;
-        const loudnessBeforeNormalization = await runStage(
+        let loudnessBeforeNormalization = await runStage(
           `Measure premaster${attemptSuffix}`,
           () =>
             measureLoudness(
@@ -341,9 +330,42 @@ async function executeSermon(
             ),
           `Codec headroom ${codecHeadroomDb.toFixed(2)} dB`,
         );
+        let normalizationInput = premasterPath;
+        const recoveryCompressionThresholdDb = Math.max(
+          -60,
+          Math.min(0, loudnessBeforeNormalization.inputI - 3),
+        );
+        if (attempt > 1) {
+          normalizationInput = join(workDirectory, "05-peak-recovery.wav");
+          await runStage(`Compress recovery peaks${attemptSuffix}`, () =>
+            compressRecoveryPeaks(
+              premasterPath,
+              normalizationInput,
+              recoveryCompressionThresholdDb,
+              runtime,
+              runner,
+            ),
+          );
+          // Compression changes both peaks and gating; two-pass normalization needs fresh data.
+          loudnessBeforeNormalization = await runStage(
+            `Measure compressed premaster${attemptSuffix}`,
+            () =>
+              measureLoudness(
+                normalizationInput,
+                {
+                  lufs: request.processing.targetLufs,
+                  lra: request.processing.targetLra,
+                  truePeak: normalizationTruePeakTargetDbtp,
+                },
+                runtime,
+                runner,
+              ),
+          );
+        }
         await runStage(`Normalize PCM${attemptSuffix}`, () =>
-          normalizePremaster(
-            premasterPath,
+          // Codec-constrained retries need peak reshaping, not linear attenuation.
+          (attempt === 1 ? normalizePremaster : renormalizePcm)(
+            normalizationInput,
             normalizedPath,
             loudnessBeforeNormalization,
             request.processing,
@@ -365,7 +387,7 @@ async function executeSermon(
           ),
         );
         let pcmGainDb = 0;
-        let pcmRenormalized = false;
+        let pcmRenormalized = attempt > 1;
         try {
           pcmGainDb = planPcmGain(normalizedLoudness, {
             lufs: request.processing.targetLufs,
@@ -512,6 +534,7 @@ async function executeSermon(
           );
         }
         return {
+          recoveryCompressionThresholdDb,
           pcmRenormalized,
           gainCorrectionDb,
           pcmGainDb,
@@ -523,7 +546,6 @@ async function executeSermon(
           outputTruePeakDbtp: outputLoudness.inputTp,
         };
       },
-      request.processing.targetLufs - 2,
       request.processing.truePeakDbtp,
       reportProgress,
     );
@@ -539,7 +561,7 @@ async function executeSermon(
 
     const qcReportPath = join(request.qcDirectory, `${basename(request.output)}.qc.json`);
     const report: QcReport = {
-      schemaVersion: 5,
+      schemaVersion: 6,
       createdAt: new Date().toISOString(),
       input: { path: request.input, ...inputProbe },
       output: { path: request.output, sha256: await hashFile(request.output), ...outputTechnical },
@@ -560,8 +582,9 @@ async function executeSermon(
       },
       loudness: {
         beforeNormalization: encoded.result.loudnessBeforeNormalization,
-        codecPreencodePeakLimitDbfs:
-          codecPreencodePeakLimitDbfs + encoded.result.pcmGainDb + gainCorrectionDb,
+        codecPreencodePeakLimitDbfs: encoded.result.pcmRenormalized
+          ? null
+          : codecPreencodePeakLimitDbfs + encoded.result.pcmGainDb + gainCorrectionDb,
         normalizedPcm: encoded.result.normalizedLoudness,
         normalizationTruePeakTargetDbtp: encoded.result.normalizationTruePeakTargetDbtp,
         output: encoded.result.outputLoudness,
@@ -569,9 +592,14 @@ async function executeSermon(
       handlingNoise,
       ...(transcription === undefined ? {} : { transcription }),
       warnings: [
+        ...(encoded.attempts > 1
+          ? [
+              `Codec-headroom recovery compressed premaster at 2:1 with threshold ${encoded.result.recoveryCompressionThresholdDb.toFixed(2)} dB, derived from integrated loudness minus 3 dB, with 1 ms attack and 100 ms release; remeasured before dynamic normalization; delivery targets unchanged.`,
+            ]
+          : []),
         ...(encoded.result.pcmRenormalized
           ? [
-              "Normalized PCM had insufficient linear-gain peak margin; recovered with FFmpeg dynamic normalization and independent verification; delivery targets unchanged.",
+              "Recovered peak-constrained audio with FFmpeg dynamic normalization and independent verification; delivery targets unchanged.",
             ]
           : []),
         ...(encoded.result.pcmGainDb > 0
